@@ -1,8 +1,8 @@
 # Context
 <!-- Updated by /wrap at session end. Edit manually if needed. Keep it under 8 lines. -->
 
-**Current focus:** Working through the TUI's requests (`../bookman-tui` files them in `inbox/REQUESTS.md`), now at the top of PLAN Active ahead of OQ3/IDENT-4.
-**Last session (2026-09-27):** Triaged two rounds of TUI inbox; shipped 1.2.0: `Config.offline` + `configured_library` (ADR-38), library marker + `is_library` + `locate_library`, open-without-create (ADR-39), and the `docs/API.md` frontend guide.
-**Blocking:** Nothing; the already-in-library and lookup-outcome tasks need spec + ADR before code.
-**Next action:** `Book.added` + `ReadIssue.summary`, deciding first whether to wait and share the metadata.json v6 bump with the content hash.
-<!-- wrapped: 2026-09-27 -->
+**Current focus:** Releasing 1.3.0 with the TUI's import requests, then waiting for the TUI to report back through `inbox/REQUESTS.md`.
+**Last session (2026-10-04):** Built every filed TUI request spec-first (ADR-40..43): GROUP-0 already-in-library by SHA-256 + `find_file(s)`, `Book.added`, metadata.json v6, `Book.lookup`/`LookupOutcome`, `set_cover` + `reidentify(replace_cover=)`, `ReadIssue.summary`, `LibraryNotFoundError.reason`, `str` paths, ~3x faster import at 2000 books; spec_version 7, 662 tests.
+**Blocking:** Nothing.
+**Next action:** Triage whatever the TUI files against 1.3.0; otherwise OQ3 editions against the Calibre data (PLAN Active).
+<!-- wrapped: 2026-10-04 -->

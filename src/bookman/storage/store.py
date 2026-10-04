@@ -10,6 +10,7 @@ write keeps them consistent and no caller has to remember to reindex.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from bookman.errors import CatalogError
@@ -140,13 +141,87 @@ class Catalog:
             metadata.json is missing or unreadable is omitted.
         """
         self._ensure_index()
-        books = []
-        for name in index.search(self._index_path, query):
-            try:
-                books.append(load_metadata(self.root / name))
-            except (FileNotFoundError, CatalogError) as exc:
-                _log.warning("skipping indexed %s: %s", name, exc)
-        return books
+        loaded = (self.load(name) for name in index.search(self._index_path, query))
+        return [book for book in loaded if book is not None]
+
+    def rows(self) -> list[index.Row]:
+        """Every book's grouping fields, in folder-name order, without
+        reading every metadata.json -- so grouping a file against a large
+        library does not load every book (spec GROUP-2).
+
+        Each index row is checked against its metadata.json's stamp
+        (modification time and size). A row that is stale -- the file
+        was edited by hand, or a folder was added or removed behind
+        bookman's back -- is re-read from metadata.json and its row
+        rewritten, so the answer is what `all()` would give, at the
+        cost of a stat per folder rather than a parse.
+
+        Returns:
+            One `index.Row` per cataloged book.
+
+        Raises:
+            FileNotFoundError: If `root` does not exist.
+        """
+        self._ensure_index()
+        indexed = {row.name: row for row in index.rows(self._index_path)}
+        fresh: list[index.Row] = []
+        # Names, not Paths, sorted: the same order as `all()`, and cheaper.
+        # A file at the root (the marker, the index) has no metadata.json
+        # beneath it, so the stamp alone tells a book folder apart.
+        for name in sorted(os.listdir(self.root)):
+            current = index.stamp(self.root / name / "metadata.json")
+            if current is None:
+                if name in indexed:
+                    index.delete(self._index_path, name)
+                continue  # not a book folder
+            row = indexed.get(name)
+            if row is not None and row.stamp == current:
+                fresh.append(row)
+                continue
+            book = self.load(name)
+            if book is None:
+                continue
+            index.upsert(self._index_path, name, book)
+            fresh.append(index.Row(name, book.title, book.author, book.isbn, current))
+        for gone in indexed.keys() - {row.name for row in fresh}:
+            index.delete(self._index_path, gone)
+        return fresh
+
+    def holding(self, hashes: list[str], *, refresh: bool = True) -> dict[str, list[Book]]:
+        """The books holding a format file with each of `hashes`, loaded
+        fresh and confirmed against their metadata.json (spec GROUP-0).
+
+        Args:
+            hashes: Hex SHA-256 digests to look for.
+            refresh: Bring stale index rows up to date first, as `rows`
+                does. False for a caller that has just called `rows`.
+
+        Returns:
+            For each digest some book records, those books, in
+            folder-name order. Digests no book records are absent.
+        """
+        if refresh:
+            self.rows()  # bring stale rows, and with them their hashes, up to date
+        found: dict[str, list[Book]] = {}
+        loaded: dict[str, Book | None] = {}
+        for digest, names in index.names_by_hash(self._index_path, hashes).items():
+            for name in names:
+                if name not in loaded:
+                    loaded[name] = self.load(name)
+                book = loaded[name]
+                if book is not None and any(fmt.sha256 == digest for fmt in book.formats):
+                    found.setdefault(digest, []).append(book)
+        return found
+
+    def load(self, name: str) -> Book | None:
+        """Load the book in folder `name`, or None if it is gone or
+        unreadable (logged): the index named a folder that no longer
+        holds that book."""
+        try:
+            return load_metadata(self.root / name)
+        except (FileNotFoundError, CatalogError) as exc:
+            _log.warning("skipping indexed %s: %s", name, exc)
+            return None
 
     def rebuild_index(self) -> None:
         """Rebuild the search index from every metadata.json under `root`.

@@ -133,12 +133,24 @@ def make_epub(
     identifiers=(),
     cover: bytes | None = None,
     cover_declared: str = "properties",
+    filler: str = "",
 ) -> Path:
     """Write a minimal EPUB. `cover` embeds those bytes as the cover
-    image, declared per `cover_declared` (see `opf_xml`)."""
+    image, declared per `cover_declared` (see `opf_xml`).
+
+    The bytes depend only on the arguments (every member carries a fixed
+    timestamp), so two calls with the same arguments write the same
+    file -- which bookman recognizes as already in the library (spec
+    GROUP-0). `filler` adds a member outside the spine, for two files
+    that say the same about themselves but are different files."""
+
+    def write(zf: zipfile.ZipFile, name: str, data: str | bytes) -> None:
+        zf.writestr(zipfile.ZipInfo(name, date_time=(2020, 1, 1, 0, 0, 0)), data)
+
     with zipfile.ZipFile(path, "w") as zf:
-        zf.writestr("META-INF/container.xml", CONTAINER_XML)
-        zf.writestr(
+        write(zf, "META-INF/container.xml", CONTAINER_XML)
+        write(
+            zf,
             "OEBPS/content.opf",
             opf_xml(
                 title=title,
@@ -148,7 +160,9 @@ def make_epub(
             ),
         )
         if cover is not None:
-            zf.writestr(f"OEBPS/{COVER_MEMBER}", cover)
+            write(zf, f"OEBPS/{COVER_MEMBER}", cover)
+        if filler:
+            write(zf, "OEBPS/filler.txt", filler)
     return path
 
 

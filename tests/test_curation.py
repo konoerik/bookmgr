@@ -11,7 +11,7 @@ from helpers import make_pdf as _make_pdf
 
 from bookman.errors import CatalogError
 from bookman.identify.source import Candidate
-from bookman.models import Book, FormatKind, MatchBasis
+from bookman.models import Book, FormatKind, LookupOutcome, MatchBasis
 
 
 @pytest.fixture
@@ -246,3 +246,129 @@ def test_reidentify_never_renames_the_folder(library, book, source):
 
     assert book.title == "Dune"
     assert book.directory == directory
+
+
+def test_reidentify_does_not_unidentify_a_book_when_the_lookup_fails(library, book, source):
+    # ADR-41: the docstring always promised "unchanged if the lookup
+    # failed"; the code used to clear `identified`.
+    source.results = [Candidate(title="Dune", author="Frank Herbert", cover_url=None)]
+    library.reidentify(book)
+    assert book.identified == MatchBasis.TITLE_AUTHOR
+
+    source.fail = True
+    library.reidentify(book)
+    assert book.identified == MatchBasis.TITLE_AUTHOR
+    assert book.lookup is LookupOutcome.IDENTIFIED
+
+    source.fail = False
+    source.results = []
+    library.reidentify(book)
+    assert library.scan()[0].identified == MatchBasis.TITLE_AUTHOR
+
+
+def test_reidentify_replaces_the_lookup_outcome(library, book, source):
+    assert book.lookup is LookupOutcome.NO_MATCH
+
+    source.fail = True
+    library.reidentify(book)
+    assert book.lookup is LookupOutcome.FAILED
+
+    source.fail = False
+    library.reidentify(book)
+    assert library.scan()[0].lookup is LookupOutcome.NO_MATCH
+
+
+def test_a_record_a_reviewed_book_does_not_adopt_leaves_its_lookup_alone(library, book, source):
+    library.mark_reviewed(book)
+    source.results = [Candidate(title="Dune", author="Frank Herbert", cover_url=None)]
+
+    library.reidentify(book)
+
+    assert book.identified is None
+    assert book.lookup is LookupOutcome.NO_MATCH
+
+
+# --- K4: covers (ADR-42) -------------------------------------------------
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"rest of a png"
+JPEG = b"\xff\xd8\xff\xe0" + b"rest of a jpeg"
+
+
+def test_reidentify_can_replace_a_reviewed_books_cover_and_nothing_else(
+    tmp_path, library, book, source
+):
+    library.set_cover(book, _image(tmp_path, JPEG))
+    library.edit(book, author="F. Herbert")
+    source.results = [Candidate(title="Dune: Book One", author="Frank Herbert", cover_url="u")]
+    source.cover = b"the right cover"
+
+    library.reidentify(book)
+    assert book.cover_path.read_bytes() == JPEG
+
+    library.reidentify(book, replace_cover=True)
+    assert book.cover_path.read_bytes() == b"the right cover"
+    assert book.author == "F. Herbert"
+    assert book.title == "Dune"
+    assert book.reviewed
+
+
+def test_replace_cover_keeps_the_cover_when_the_record_has_none(tmp_path, library, book, source):
+    library.set_cover(book, _image(tmp_path, PNG))
+    source.results = [Candidate(title="Dune", author="Frank Herbert", cover_url=None)]
+
+    library.reidentify(book, replace_cover=True)
+
+    assert book.cover_path.read_bytes() == PNG
+
+
+def _image(tmp_path, data, name="picked.img"):
+    path = tmp_path / name
+    path.write_bytes(data)
+    return path
+
+
+@pytest.mark.parametrize(
+    "data", [PNG, JPEG, b"GIF89a...", b"RIFF\x00\x00\x00\x00WEBPVP8 "], ids=str
+)
+def test_set_cover_copies_an_image_as_the_books_cover(tmp_path, library, book, data):
+    library.set_cover(book, str(_image(tmp_path, data)))
+
+    assert book.cover_path == book.directory / "cover.png"
+    assert book.cover_path.read_bytes() == data
+    assert book.reviewed
+    assert library.scan()[0].cover_path.read_bytes() == data
+
+
+def test_a_chosen_cover_survives_an_import_that_identifies_the_book(
+    tmp_path, library, book, source
+):
+    library.set_cover(book, _image(tmp_path, PNG))
+    source.results = [Candidate(title="Dune", author="Frank Herbert", cover_url="u")]
+    source.cover = b"the record's cover"
+
+    library.import_file(_make_pdf(tmp_path / "b.pdf", title="Dune", author="Frank Herbert"))
+
+    assert library.scan()[0].cover_path.read_bytes() == PNG
+
+
+def test_set_cover_none_removes_the_cover(tmp_path, library, book):
+    library.set_cover(book, _image(tmp_path, PNG))
+
+    library.set_cover(book, None)
+
+    assert book.cover_path is None
+    assert not (book.directory / "cover.png").exists()
+    assert library.scan()[0].cover_path is None
+
+
+def test_set_cover_refuses_a_file_that_is_not_an_image(tmp_path, library, book):
+    with pytest.raises(CatalogError, match="not a PNG, JPEG, GIF or WebP image"):
+        library.set_cover(book, _image(tmp_path, b"%PDF-1.7"))
+
+    assert book.cover_path is None
+    assert not book.reviewed
+
+
+def test_set_cover_raises_for_a_missing_image(tmp_path, library, book):
+    with pytest.raises(FileNotFoundError):
+        library.set_cover(book, tmp_path / "nope.png")

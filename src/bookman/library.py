@@ -6,14 +6,17 @@ for a consumer (e.g. the companion TUI) once implemented.
 from __future__ import annotations
 
 import filecmp
+import hashlib
 import json
 import logging
 import os
 import re
 import shutil
-from collections.abc import Iterator, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Iterator, Sequence
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Protocol, TypeVar, Union
 
 from bookman.errors import (
     CatalogError,
@@ -33,12 +36,15 @@ from bookman.models import (
     Book,
     BookFormat,
     FormatKind,
+    LookupOutcome,
     MatchBasis,
     ReadIssue,
+    fold_lookup,
     stronger_basis,
     weaker_basis,
 )
 from bookman.storage.catalog import save_metadata
+from bookman.storage.index import Row
 from bookman.storage.store import Catalog
 
 # A colon is the usual title/subtitle separator, so it becomes " -"
@@ -55,8 +61,16 @@ _log = logging.getLogger("bookman.library")
 MARKER_NAME = ".bookman-library.json"
 _LAYOUT_VERSION = 1
 
+StrPath = Union[str, "os.PathLike[str]"]
+"""A filesystem path as a public function accepts it: a `str` or any
+path-like object, converted to `Path` on the way in (ADR-43)."""
 
-def is_library(path: Path) -> bool:
+# What a cover image may be (ADR-42), by its leading bytes: PNG, JPEG,
+# GIF, and WebP (a RIFF container whose form type is WEBP).
+_IMAGE_SIGNATURES = (b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a")
+
+
+def is_library(path: StrPath) -> bool:
     """Whether `path` is a bookman library. Read-only: nothing is created.
 
     A library has a marker file at its root, written when it is created
@@ -72,6 +86,7 @@ def is_library(path: Path) -> bool:
         missing path, a file, and an empty folder (which is not a
         library yet, though a library can be created there).
     """
+    path = Path(path)
     if not path.is_dir():
         return False
     if (path / MARKER_NAME).is_file():
@@ -94,6 +109,22 @@ _UNSET = _Unset()
 
 
 @dataclass(frozen=True)
+class AlreadyInLibrary:
+    """A file whose exact bytes the library already holds (spec GROUP-0,
+    ADR-40). Nothing was parsed, looked up, copied or written.
+
+    Attributes:
+        source: The file that was offered.
+        book: The book that holds those bytes, as it stands.
+        existing: That book's format file with the same bytes.
+    """
+
+    source: Path
+    book: Book
+    existing: BookFormat
+
+
+@dataclass(frozen=True)
 class ImportEvent:
     """One step of a directory import, as `Library.iter_import` yields it.
 
@@ -110,6 +141,8 @@ class ImportEvent:
             event for the same `path` carries the result. A `Book` means
             it imported, and is the book as it stands after this file. A
             `FormatConflictError` means it was refused (ADR-21). An
+            `AlreadyInLibrary` means its bytes were already in the
+            library and nothing changed (ADR-40). An
             `UnsupportedFormatError` means it was skipped without being
             attempted, so no None event precedes it. Any other exception
             means it failed.
@@ -118,7 +151,7 @@ class ImportEvent:
     path: Path
     index: int
     total: int
-    outcome: Book | Exception | None = None
+    outcome: Book | AlreadyInLibrary | Exception | None = None
 
 
 @dataclass
@@ -138,12 +171,16 @@ class ImportBatchResult:
             ADR-21). Not a failure: nothing is wrong with the file, and
             nothing was changed. Each carries what a frontend needs to
             ask the user what they meant -- see `FormatConflictError`.
+        unchanged: Files whose exact bytes the library already held
+            (spec GROUP-0, ADR-40). Not imported again, and nothing
+            changed.
     """
 
     imported: list[tuple[Path, Book]] = field(default_factory=list)
     failed: list[tuple[Path, Exception]] = field(default_factory=list)
     skipped: list[Path] = field(default_factory=list)
     conflicts: list[FormatConflictError] = field(default_factory=list)
+    unchanged: list[AlreadyInLibrary] = field(default_factory=list)
 
     def record(self, event: ImportEvent) -> None:
         """File `event` under the attribute its outcome belongs to.
@@ -161,6 +198,8 @@ class ImportBatchResult:
             return
         if isinstance(outcome, Book):
             self.imported.append((event.path, outcome))
+        elif isinstance(outcome, AlreadyInLibrary):
+            self.unchanged.append(outcome)
         elif isinstance(outcome, FormatConflictError):
             self.conflicts.append(outcome)
         elif isinstance(outcome, UnsupportedFormatError):
@@ -184,7 +223,7 @@ class Library:
     the same assumption -- the class holds no lock either.
     """
 
-    def __init__(self, root: Path, *, source: MetadataSource | None = None) -> None:
+    def __init__(self, root: StrPath, *, source: MetadataSource | None = None) -> None:
         """Open (or initialize) a managed library at `root`.
 
         This always succeeds on a folder: it creates `root` if missing and
@@ -199,16 +238,20 @@ class Library:
                 Library; pass `NullSource()` for offline, file-only
                 imports, or any other `MetadataSource`.
         """
-        self.root = root
+        self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
-        _write_marker(root)
-        self._catalog = Catalog(root)
+        _write_marker(self.root)
+        self._catalog = Catalog(self.root)
         self._source: MetadataSource = source if source is not None else OpenLibrarySource()
 
-    def import_file(self, path: Path) -> Book:
+    def import_file(self, path: StrPath) -> Book:
         """Identify, place, and catalog a single ebook file into the library.
 
         Pipeline:
+        0. Hash `path`. If a format file in the library already has
+           these exact bytes (spec GROUP-0, ADR-40), return the book
+           holding it: nothing is parsed, looked up, copied or written.
+           `iter_import` reports this as `AlreadyInLibrary`.
         1. Parse `path` with the parser registered for its suffix
            (bookman.formats: .epub -> parse_epub, .pdf -> parse_pdf).
         2. Identify it (identify.resolve.identify): look up the file's
@@ -264,6 +307,9 @@ class Library:
              `identified` are left exactly as the human set them. A
              TITLE_ONLY join clears `reviewed`, since the book's
              contents changed in a doubtful way.
+           - Either way, `lookup` records how the lookup went (spec
+             `lookup_outcome`), the placed format records its
+             `sha256`, and a new book records when it was `added`.
         6. Write/overwrite metadata.json for the resulting folder and
            update its row in the search index (storage.store.Catalog.put).
 
@@ -273,7 +319,8 @@ class Library:
         Returns:
             The Book as cataloged after this import, reflecting every
             format currently in its folder -- not just the one just
-            added.
+            added. For a file already in the library, the book that
+            holds it, unchanged.
 
         Raises:
             FileNotFoundError: If path does not exist.
@@ -290,18 +337,38 @@ class Library:
             OSError: If copying the file, or writing metadata.json or
                 cover.png, fails (e.g. disk full, permissions).
         """
+        outcome = self._import(Path(path))
+        return outcome.book if isinstance(outcome, AlreadyInLibrary) else outcome
+
+    def _import(self, path: Path) -> Book | AlreadyInLibrary:
+        """`import_file`, telling a file already in the library apart from
+        an import, as `iter_import` must."""
         if not path.exists():
             raise FileNotFoundError(path)
         kind, parser = parser_for(path)
+
+        digest = _sha256(path)
+        rows = self._catalog.rows()  # one pass over the folders per import
+        held = self._holding([digest], refresh=False).get(digest)
+        if held is not None:
+            # GROUP-0: these bytes are already in the library.
+            _log.info("GROUP-0 %s is already in %r", path.name, held.book.title)
+            return replace(held, source=path)
 
         parsed = parser(path)
         found = identify(parsed, self._source)
         title = found.title or path.stem
 
-        match = self._find_book(title, found.author, found.isbns)
+        match = self._find_book(title, found.author, found.isbns, rows)
         if match is None:
             directory = self._new_directory(title)
-            book, join = Book(title=title, author=found.author, isbn=found.isbn), None
+            book = Book(
+                title=title,
+                author=found.author,
+                isbn=found.isbn,
+                added=datetime.now(timezone.utc),
+            )
+            join = None
         else:
             book, join = match
             assert book.directory is not None  # every loaded Book carries it (ADR-11)
@@ -309,8 +376,9 @@ class Library:
             _refuse_conflicting_format(book, path, kind, join, found, title=title)
 
         try:
-            _place_format(book, directory, path, kind, parsed.read_issue)
+            _place_format(book, directory, path, kind, parsed.read_issue, digest)
             cover_url = _apply_identification(book, found, join, title=title)
+            fold_lookup(book, found.outcome)
             if cover_url:
                 self._save_cover(book, directory, cover_url)
             if book.cover_path is None and kind == FormatKind.EPUB:
@@ -335,7 +403,7 @@ class Library:
             raise
         return book
 
-    def iter_import(self, directory: Path, *, recursive: bool = False) -> Iterator[ImportEvent]:
+    def iter_import(self, directory: StrPath, *, recursive: bool = False) -> Iterator[ImportEvent]:
         """Import every supported file under `directory`, one event at a
         time, so the caller can show progress while the batch runs.
 
@@ -368,6 +436,7 @@ class Library:
             NotADirectoryError: If `directory` exists but isn't a
                 directory.
         """
+        directory = Path(directory)
         if not directory.exists():
             raise FileNotFoundError(directory)
         if not directory.is_dir():
@@ -390,15 +459,15 @@ class Library:
                 yield ImportEvent(path, index, total, unsupported)
                 continue
             yield ImportEvent(path, index, total)
-            outcome: Book | Exception
+            outcome: Book | AlreadyInLibrary | Exception
             try:
-                outcome = self.import_file(path)
+                outcome = self._import(path)
             except Exception as exc:
                 # One bad file must not abort the batch.
                 outcome = exc
             yield ImportEvent(path, index, total, outcome)
 
-    def import_directory(self, directory: Path, *, recursive: bool = False) -> ImportBatchResult:
+    def import_directory(self, directory: StrPath, *, recursive: bool = False) -> ImportBatchResult:
         """Import every file with a registered format parser under `directory`.
 
         Runs `iter_import` to the end and collects its events into one
@@ -422,7 +491,7 @@ class Library:
             attempted; hidden files (a leading dot, e.g. .DS_Store) are
             ignored entirely. A file refused for colliding with a book's
             existing file of the same kind lands in `conflicts`, not
-            `failed`.
+            `failed`, and one already in the library in `unchanged`.
 
         Raises:
             FileNotFoundError: If `directory` does not exist.
@@ -482,6 +551,63 @@ class Library:
             silently omitted rather than raising.
         """
         return self._catalog.search(query)
+
+    def find_file(self, path: StrPath) -> Book | None:
+        """Which book, if any, already holds this exact file.
+
+        The question an import asks first (spec GROUP-0, ADR-40), asked
+        without importing: offline, nothing written, the file only read
+        to hash it. Use `find_files` for many files at once.
+
+        Args:
+            path: Any file, supported format or not.
+
+        Returns:
+            The book holding a format file with the same bytes, loaded
+            fresh, or None. A file placed before bookman recorded hashes
+            is not found until it is next imported.
+
+        Raises:
+            FileNotFoundError: If `path` does not exist.
+            IsADirectoryError: If `path` is a directory.
+        """
+        path = Path(path)
+        return self.find_files([path]).get(path)
+
+    def find_files(self, paths: Iterable[StrPath]) -> dict[Path, Book]:
+        """`find_file` for many files at once, for an import preview: one
+        index query for the lot, each file read once to hash it.
+
+        Args:
+            paths: Files to check.
+
+        Returns:
+            For each file the library already holds, the book holding
+            it, keyed by the path as given (converted to `Path`). Files
+            the library does not hold are absent.
+
+        Raises:
+            FileNotFoundError: If any path does not exist.
+            IsADirectoryError: If any path is a directory.
+        """
+        digests = {Path(path): _sha256(Path(path)) for path in paths}
+        held = self._holding(list(digests.values()))
+        return {path: held[digest].book for path, digest in digests.items() if digest in held}
+
+    def _holding(self, digests: list[str], *, refresh: bool = True) -> dict[str, AlreadyInLibrary]:
+        """For each digest whose bytes some book's format file holds, and
+        whose file is still on disk, that book and file. `source` is a
+        placeholder for the caller to fill in."""
+        found: dict[str, AlreadyInLibrary] = {}
+        for digest, books in self._catalog.holding(digests, refresh=refresh).items():
+            for book in books:
+                existing = next(
+                    (f for f in book.formats if f.sha256 == digest and f.path.is_file()), None
+                )
+                if existing is not None:
+                    found[digest] = AlreadyInLibrary(existing.path, book, existing)
+                    break
+        return found
 
     def mark_reviewed(self, book: Book, reviewed: bool = True) -> Book:
         """Record that a human has (or has not) checked this book.
@@ -585,17 +711,19 @@ class Library:
         _log.info("renamed %r -> %r", old_name, book.directory.name if book.directory else None)
         return book
 
-    def reidentify(self, book: Book) -> Book:
+    def reidentify(self, book: Book, *, replace_cover: bool = False) -> Book:
         """Look this book up again and apply what comes back.
 
-        For a book whose lookup failed, that never matched, or whose
-        title a human has since corrected -- the usual route to a cover
-        the original import could not find.
+        For a book whose lookup failed (`lookup` is FAILED), that never
+        matched, or whose title a human has since corrected -- the usual
+        route to a cover the original import could not find.
 
         A **reviewed** book is not overwritten: the lookup still runs,
         but only a cover it lacks and fields left empty are filled in,
         never the title, author or ISBN a human set. An unreviewed book
-        adopts the result outright, exactly as an import would.
+        adopts an agreeing record outright, exactly as an import would.
+        A lookup that fails or finds nothing that agrees changes nothing
+        but `lookup`; an identified book stays identified.
 
         The title is never changed: the book's own title is what is
         searched on, and the file's title wins over the source's
@@ -604,10 +732,16 @@ class Library:
         Args:
             book: A persisted book, as returned by `scan`, `search` or
                 `import_file`. Mutated in place.
+            replace_cover: Replace the book's cover with the record's
+                even if it has one and is reviewed -- the way to swap a
+                wrong cover without touching the title, author or ISBN
+                a human set (ADR-42). A record with no cover leaves the
+                existing one in place.
 
         Returns:
-            The same Book, updated and saved. Unchanged if nothing
-            agreed, or if the lookup failed (never raises for that).
+            The same Book, updated and saved. `lookup` records how this
+            lookup went (spec `lookup_outcome`): it replaces the old
+            outcome unless the book stays identified.
 
         Raises:
             CatalogError: If `book` has never been persisted.
@@ -623,24 +757,79 @@ class Library:
             self._source,
         )
 
-        if book.reviewed:
-            # A human's fields stand; fill only what is missing.
-            book.author = book.author or found.author
-            book.isbn = book.isbn or found.isbn
-            adopt_cover = found.cover_url is not None and book.cover_path is None
-        else:
-            book.author = found.author or book.author
-            book.isbn = found.isbn or book.isbn
-            book.identified = found.basis
-            adopt_cover = found.cover_url is not None
-        # Provenance, not a human's field: reviewed or not, the book
-        # records what the source says now.
-        book.record_author = found.record_author or book.record_author
+        adopt_cover = False
+        if found.basis is not None:
+            if book.reviewed:
+                # A human's fields stand; fill only what is missing.
+                book.author = book.author or found.author
+                book.isbn = book.isbn or found.isbn
+                adopt_cover = book.cover_path is None
+            else:
+                book.author = found.author or book.author
+                book.isbn = found.isbn or book.isbn
+                book.identified = found.basis
+                adopt_cover = True
+            # Provenance, not a human's field: reviewed or not, the book
+            # records what the source says now.
+            book.record_author = found.record_author or book.record_author
+        # lookup_outcome: a fresh lookup of the whole book replaces the
+        # outcome, unless the book stays identified; a record a reviewed
+        # book did not adopt changes nothing.
+        if book.identified is not None:
+            book.lookup = LookupOutcome.IDENTIFIED
+        elif found.outcome is not LookupOutcome.IDENTIFIED:
+            book.lookup = found.outcome
 
-        if adopt_cover and found.cover_url:
+        if found.cover_url and (adopt_cover or replace_cover):
             self._save_cover(book, directory, found.cover_url)
         self._persist(book, directory)
-        _log.info("re-identified %r as %s", book.title, found.basis)
+        _log.info("re-identified %r: %s", book.title, found.outcome.value)
+        return book
+
+    def set_cover(self, book: Book, image: StrPath | None) -> Book:
+        """Give a book a cover from a local image, or remove its cover.
+
+        The image is copied as it is into the book's folder as
+        `cover.png` -- the name every cover has, whatever its format, as
+        a fetched cover's is (I3). Like `edit`, this **sets `reviewed`**,
+        so the next import that identifies the book more strongly cannot
+        replace the cover the user chose (ADR-42). To fetch the record's
+        cover instead, use `reidentify(book, replace_cover=True)`.
+
+        Args:
+            book: A persisted book, as returned by `scan`, `search` or
+                `import_file`. Mutated in place.
+            image: A PNG, JPEG, GIF or WebP file, or None to remove the
+                book's cover.
+
+        Returns:
+            The same Book, updated and saved, with `cover_path` pointing
+            at the new cover, or None.
+
+        Raises:
+            CatalogError: If `book` has never been persisted, or `image`
+                is not a PNG, JPEG, GIF or WebP image.
+            FileNotFoundError: If `image` does not exist.
+            OSError: If the copy or the write fails.
+        """
+        directory = _persisted_directory(book)
+        cover_path = directory / "cover.png"
+        if image is None:
+            cover_path.unlink(missing_ok=True)
+            book.cover_path = None
+        else:
+            data = Path(image).read_bytes()
+            if not _is_image(data):
+                raise CatalogError(
+                    f"{image} is not a PNG, JPEG, GIF or WebP image; choose an image file"
+                )
+            partial = directory / "cover.png.partial"
+            partial.write_bytes(data)
+            os.replace(partial, cover_path)
+            book.cover_path = cover_path
+        book.reviewed = True
+        self._persist(book, directory)
+        _log.info("set the cover of %r: %s", book.title, image or "removed")
         return book
 
     def _rename_folder(self, book: Book, directory: Path) -> None:
@@ -662,12 +851,7 @@ class Library:
 
         new_stem = target.name
         book.formats = [
-            BookFormat(
-                kind=fmt.kind,
-                path=_rename_in_place(fmt.path, new_stem),
-                read_issue=fmt.read_issue,
-            )
-            for fmt in book.formats
+            replace(fmt, path=_rename_in_place(fmt.path, new_stem)) for fmt in book.formats
         ]
         # The cover is always "cover.png", not named after the folder,
         # so it needs no rename -- only repointing once the folder moves.
@@ -675,57 +859,38 @@ class Library:
 
         directory.rename(target)
         book.directory = target
-        book.formats = [
-            BookFormat(kind=fmt.kind, path=target / fmt.path.name, read_issue=fmt.read_issue)
-            for fmt in book.formats
-        ]
+        book.formats = [replace(fmt, path=target / fmt.path.name) for fmt in book.formats]
         if book.cover_path is not None:
             book.cover_path = target / book.cover_path.name
 
     def _find_book(
-        self, title: str, author: str | None, isbns: Sequence[str]
+        self, title: str, author: str | None, isbns: Sequence[str], rows: Sequence[Row]
     ) -> tuple[Book, MatchBasis] | None:
         """Find the existing book a file described by (title, author,
         isbns) belongs to, and the basis for that judgment.
 
-        Spec: GROUP-1 (the ISBN join) then GROUP-2 (strongest MATCH
-        across every existing book). Returning None is GROUP-3: this is
-        a new book.
+        Spec: GROUP-1 then GROUP-2, judged by `_strongest_join`.
+        Returning None is GROUP-3: this is a new book.
 
-        An exact ISBN match wins outright -- on *any* of the ISBNs the
-        file carries (ADR-26: a copyright page lists print and ebook
-        numbers together, and the companion file may assert either) --
-        subject to the same guard `identify` applies to a lookup hit: a
-        shared ISBN whose title *and* author both contradict the file is
-        a scraped false positive, not a match. Otherwise the strongest
-        `match_basis` across all books wins, so a TITLE_AUTHOR match is
-        preferred over a TITLE_ONLY one. None if no book matches.
+        The judgment runs over `rows`, the search index's restatement of
+        every book (`Catalog.rows`, checked against each metadata.json's
+        stamp), so an import into a library of thousands of books does
+        not parse thousands of files. The chosen book is loaded and
+        judged again; if it no longer joins on the same basis -- it
+        changed since `rows` was read -- the judgment is redone over
+        every metadata.json.
         """
-        existing = self._catalog.all()
-
-        # GROUP-1: a shared ISBN is not sufficient on its own -- run the
-        # same MATCH rule identification runs, or one false-positive ISBN
-        # in two unrelated files merges them.
-        for isbn in isbns:
-            for book in existing:
-                if book.isbn == isbn and match_basis(
-                    title, author, book.title, book.author, same_isbn=True
-                ):
-                    return book, MatchBasis.ISBN
-
-        # GROUP-2: TITLE_AUTHOR beats TITLE_ONLY; ties resolve by sorted
-        # folder order (the catalog's), so imports are repeatable.
-        title_only: Book | None = None
-        for book in existing:
-            basis = match_basis(title, author, book.title, book.author)
-            if basis == MatchBasis.TITLE_AUTHOR:
+        chosen = _strongest_join(title, author, isbns, rows)
+        if chosen is None:
+            return None
+        row, basis = chosen
+        book = self._catalog.load(row.name)
+        if book is not None:
+            confirmed = _strongest_join(title, author, isbns, [book])
+            if confirmed is not None and confirmed[1] == basis:
                 return book, basis
-            if basis == MatchBasis.TITLE_ONLY and title_only is None:
-                title_only = book
-        if title_only is not None:
-            return title_only, MatchBasis.TITLE_ONLY
-
-        return None
+        _log.info("search index is stale at %r; grouping from metadata.json", row.name)
+        return _strongest_join(title, author, isbns, self._catalog.all())
 
     def _new_directory(self, title: str) -> Path:
         """Atomically claim a new, not-yet-existing book folder.
@@ -785,6 +950,79 @@ class Library:
 
 
 _DEDUP_SUFFIX = re.compile(r" \(\d+\)$")
+
+
+class _Describes(Protocol):
+    """What grouping needs to know about an existing book: a `Book`, or
+    the index's restatement of one."""
+
+    @property
+    def title(self) -> str: ...
+    @property
+    def author(self) -> str | None: ...
+    @property
+    def isbn(self) -> str | None: ...
+
+
+_D = TypeVar("_D", bound=_Describes)
+
+
+def _strongest_join(
+    title: str, author: str | None, isbns: Sequence[str], existing: Sequence[_D]
+) -> tuple[_D, MatchBasis] | None:
+    """The existing book a file described by (title, author, isbns)
+    joins, and on what basis, or None for a new book.
+
+    Spec: GROUP-1 (the ISBN join) then GROUP-2 (strongest MATCH across
+    every existing book), over `existing` in folder-name order.
+
+    An exact ISBN match wins outright -- on *any* of the ISBNs the file
+    carries (ADR-26: a copyright page lists print and ebook numbers
+    together, and the companion file may assert either) -- subject to
+    the same guard `identify` applies to a lookup hit: a shared ISBN
+    whose title *and* author both contradict the file is a scraped
+    false positive, not a match. Otherwise the strongest `match_basis`
+    across all books wins, so a TITLE_AUTHOR match is preferred over a
+    TITLE_ONLY one.
+    """
+    # GROUP-1: a shared ISBN is not sufficient on its own -- run the
+    # same MATCH rule identification runs, or one false-positive ISBN
+    # in two unrelated files merges them.
+    for isbn in isbns:
+        for book in existing:
+            if book.isbn == isbn and match_basis(
+                title, author, book.title, book.author, same_isbn=True
+            ):
+                return book, MatchBasis.ISBN
+
+    # GROUP-2: TITLE_AUTHOR beats TITLE_ONLY; ties resolve by sorted
+    # folder order, so imports are repeatable.
+    title_only: _D | None = None
+    for book in existing:
+        basis = match_basis(title, author, book.title, book.author)
+        if basis == MatchBasis.TITLE_AUTHOR:
+            return book, basis
+        if basis == MatchBasis.TITLE_ONLY and title_only is None:
+            title_only = book
+    if title_only is not None:
+        return title_only, MatchBasis.TITLE_ONLY
+    return None
+
+
+def _is_image(data: bytes) -> bool:
+    """Whether `data` starts like a PNG, JPEG, GIF or WebP image."""
+    if data.startswith(_IMAGE_SIGNATURES):
+        return True
+    return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+
+
+def _sha256(path: Path) -> str:
+    """The hex SHA-256 of a file's bytes, read in chunks."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _write_marker(root: Path) -> None:
@@ -862,11 +1100,17 @@ def _refuse_conflicting_format(
 
 
 def _place_format(
-    book: Book, directory: Path, source: Path, kind: FormatKind, read_issue: ReadIssue | None
+    book: Book,
+    directory: Path,
+    source: Path,
+    kind: FormatKind,
+    read_issue: ReadIssue | None,
+    sha256: str,
 ) -> None:
     """Copy `source` into `directory` as `<folder name><suffix>` and make
     it `book`'s file for `kind`, recording why its contents could not be
-    read if they could not (spec PR6).
+    read if they could not (spec PR6), and the hash of its bytes (spec
+    GROUP-0, ADR-40).
 
     Any previous file of the same kind under a different name (a
     pre-0.3 `book<suffix>`) is deleted, and its entry replaced, so a
@@ -888,7 +1132,7 @@ def _place_format(
         if fmt.kind == kind and fmt.path != dest:
             fmt.path.unlink(missing_ok=True)
     book.formats = [fmt for fmt in book.formats if fmt.kind != kind]
-    book.formats.append(BookFormat(kind=kind, path=dest, read_issue=read_issue))
+    book.formats.append(BookFormat(kind=kind, path=dest, read_issue=read_issue, sha256=sha256))
 
 
 def _apply_identification(

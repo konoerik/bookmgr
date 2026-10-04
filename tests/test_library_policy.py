@@ -1,9 +1,11 @@
 """The evidence-merge policy of `Library.import_file` (step 5), tested
 directly on bare Books -- no files, no network."""
 
+import pytest
+
 from bookman.identify.resolve import Identification
 from bookman.library import _apply_identification
-from bookman.models import Book, MatchBasis
+from bookman.models import Book, LookupOutcome, MatchBasis, ReadIssue, fold_lookup
 
 
 def _found(
@@ -177,3 +179,41 @@ def test_title_only_join_clears_reviewed_but_still_keeps_the_humans_metadata():
     assert book.grouped == MatchBasis.TITLE_ONLY
     assert (book.title, book.author, book.identified) == ("Book Title", None, None)
     assert cover is None
+
+
+# --- spec lookup_outcome: folding a file's outcome into the book -------
+
+
+@pytest.mark.parametrize(
+    ("before", "outcome", "after"),
+    [
+        (None, LookupOutcome.NOT_ATTEMPTED, LookupOutcome.NOT_ATTEMPTED),
+        (LookupOutcome.NOT_ATTEMPTED, LookupOutcome.NO_MATCH, LookupOutcome.NO_MATCH),
+        (LookupOutcome.NO_MATCH, LookupOutcome.FAILED, LookupOutcome.FAILED),
+        (LookupOutcome.FAILED, LookupOutcome.NO_MATCH, LookupOutcome.FAILED),
+        (LookupOutcome.FAILED, LookupOutcome.NOT_ATTEMPTED, LookupOutcome.FAILED),
+        # A record the book did not adopt (reviewed, or ADR-27) changes nothing.
+        (LookupOutcome.NO_MATCH, LookupOutcome.IDENTIFIED, LookupOutcome.NO_MATCH),
+    ],
+)
+def test_an_unidentified_book_keeps_the_strongest_outcome(before, outcome, after):
+    book = Book(title="Dune", author=None, isbn=None, lookup=before)
+
+    fold_lookup(book, outcome)
+
+    assert book.lookup is after
+
+
+def test_an_identified_book_is_identified_whatever_the_files_lookup_did():
+    book = Book(title="Dune", author=None, isbn=None, identified=MatchBasis.ISBN)
+
+    fold_lookup(book, LookupOutcome.FAILED)
+
+    assert book.lookup is LookupOutcome.IDENTIFIED
+
+
+@pytest.mark.parametrize("issue", list(ReadIssue))
+def test_every_read_issue_has_a_short_sentence_cased_summary(issue):
+    assert issue.summary[0].isupper()
+    assert len(issue.summary) < len(issue.advice)
+    assert not issue.summary.endswith(".")

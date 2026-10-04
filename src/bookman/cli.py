@@ -30,10 +30,11 @@ from bookman.errors import (
     FormatConflictError,
     LibraryNotConfiguredError,
     LibraryNotFoundError,
+    LibraryNotFoundReason,
     UnsupportedFormatError,
 )
 from bookman.formats import is_supported, supported_suffixes
-from bookman.library import ImportBatchResult, ImportEvent, Library, is_library
+from bookman.library import AlreadyInLibrary, ImportBatchResult, ImportEvent, Library, is_library
 from bookman.models import Book, MatchBasis, ReadIssue
 
 _SUPPORTED = ", ".join(supported_suffixes())
@@ -124,7 +125,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     create = args.command == "import" and args.library is not None
     try:
         library = configured_library(args.library, create=create)
-    except (LibraryNotConfiguredError, LibraryNotFoundError) as exc:
+    except LibraryNotFoundError as exc:
+        _error(str(exc) + _INIT_HINTS.get(exc.reason, ""))
+        return 1
+    except LibraryNotConfiguredError as exc:
         _error(str(exc))
         return 1
     except ConfigError as exc:
@@ -352,13 +356,19 @@ def _cmd_import(library: Library, path: Path, *, recursive: bool) -> int:
         for event in library.iter_import(path, recursive=recursive):
             _print_event(event, path)
             result.record(event)
-        if not any((result.imported, result.failed, result.skipped, result.conflicts)):
+        if not any(
+            (result.imported, result.failed, result.skipped, result.conflicts, result.unchanged)
+        ):
             hint = "" if recursive else "; try --recursive"
             print(f"no {_SUPPORTED} files found in {path}{hint}")
         _rule()
         print(_format_batch_result(result))
         return 1 if result.failed or result.conflicts else 0
 
+    held = library.find_file(path)
+    if held is not None:
+        print(f"already in library: {held.title}")
+        return 0
     try:
         book = library.import_file(path)
     except FormatConflictError as conflict:
@@ -439,6 +449,14 @@ def _rule() -> None:
     print("-" * _RULE_WIDTH, flush=True)
 
 
+# ADR-43: bookman's message names a step any frontend can offer; the
+# CLI's way of taking it is `bookman init`.
+_INIT_HINTS = {
+    LibraryNotFoundReason.MISSING: " (run `bookman init <dir>`)",
+    LibraryNotFoundReason.NOT_A_LIBRARY: " (run `bookman init <new dir>`)",
+}
+
+
 def _error(message: str) -> None:
     print(f"error: {message}", file=sys.stderr)
 
@@ -458,6 +476,8 @@ def _print_event(event: ImportEvent, directory: Path) -> None:
     elif isinstance(outcome, Book):
         print(f" imported: {outcome.title} ({_describe_import(event.path, outcome)})", flush=True)
         _print_read_issue(event.path, outcome)
+    elif isinstance(outcome, AlreadyInLibrary):
+        print(f" already in library: {outcome.book.title}", flush=True)
     elif isinstance(outcome, UnsupportedFormatError):
         print(f"{label} skipped (unsupported format {event.path.suffix})", flush=True)
     else:
@@ -568,10 +588,12 @@ _READ_ISSUE_LABELS = {
 def _format_batch_result(result: ImportBatchResult) -> str:
     """Render an ImportBatchResult's summary line, e.g. "3 imported, 1
     failed" -- printed after `_cmd_import`'s per-file lines for a directory
-    import. Skipped and refused counts are appended only when there are
+    import. Already-imported, skipped and refused counts are appended only when there are
     any, so the common clean case stays short.
     """
     summary = f"{len(result.imported)} imported, {len(result.failed)} failed"
+    if result.unchanged:
+        summary += f", {len(result.unchanged)} already in library"
     if result.skipped:
         summary += f", {len(result.skipped)} skipped"
     if result.conflicts:

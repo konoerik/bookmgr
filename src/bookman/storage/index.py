@@ -18,6 +18,7 @@ import logging
 import os
 import sqlite3
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from bookman.errors import CatalogError
@@ -25,19 +26,65 @@ from bookman.models import Book
 from bookman.storage.catalog import load_metadata
 
 _log = logging.getLogger("bookman.storage")
-_SCHEMA_VERSION = 2
-_CREATE_TABLE = """
-CREATE TABLE books (
-    name TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    author TEXT,
-    isbn TEXT,
-    needs_review INTEGER NOT NULL
+_SCHEMA_VERSION = 3
+_CREATE_TABLES = (
+    """
+    CREATE TABLE books (
+        name TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        author TEXT,
+        isbn TEXT,
+        needs_review INTEGER NOT NULL,
+        stamp TEXT
+    )
+    """,
+    # One row per format file with a recorded hash (ADR-40). Not unique:
+    # nothing stops the same bytes being copied into two folders by hand.
+    "CREATE TABLE files (sha256 TEXT NOT NULL, name TEXT NOT NULL)",
+    "CREATE INDEX files_by_sha256 ON files (sha256)",
 )
-"""
 _UPSERT = (
-    "INSERT OR REPLACE INTO books (name, title, author, isbn, needs_review) VALUES (?, ?, ?, ?, ?)"
+    "INSERT OR REPLACE INTO books (name, title, author, isbn, needs_review, stamp) "
+    "VALUES (?, ?, ?, ?, ?, ?)"
 )
+_INSERT_FILE = "INSERT INTO files (sha256, name) VALUES (?, ?)"
+
+
+@dataclass(frozen=True)
+class Row:
+    """What the index holds about one book: enough to judge grouping
+    (spec GROUP-1/2) without reading its metadata.json.
+
+    Attributes:
+        name: The book folder's name, relative to the library root.
+        title: The book's title.
+        author: The book's author, or None.
+        isbn: The book's ISBN-13, or None.
+        stamp: The modification time and size of the metadata.json
+            the row was taken from (see `stamp`), or None if unknown.
+            A row whose stamp no longer matches the file is stale.
+    """
+
+    name: str
+    title: str
+    author: str | None
+    isbn: str | None
+    stamp: str | None = None
+
+
+def stamp(metadata_json: Path) -> str | None:
+    """A fingerprint of a metadata.json file -- its modification time in
+    nanoseconds and its size -- that changes when the file is rewritten,
+    including by hand. None if the file cannot be read.
+
+    Args:
+        metadata_json: The file to fingerprint.
+    """
+    try:
+        info = metadata_json.stat()
+    except OSError:
+        return None
+    return f"{info.st_mtime_ns}:{info.st_size}"
 
 
 def rebuild_index(library_root: Path, db_path: Path) -> None:
@@ -92,9 +139,12 @@ def write_index(db_path: Path, rows: Iterable[tuple[str, Book]]) -> None:
         tmp_path.unlink()
     conn = sqlite3.connect(tmp_path)
     try:
-        conn.execute(_CREATE_TABLE)
+        for statement in _CREATE_TABLES:
+            conn.execute(statement)
         conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
-        conn.executemany(_UPSERT, (_row(name, book) for name, book in rows))
+        for name, book in rows:
+            conn.execute(_UPSERT, _row(name, book, library_root=db_path.parent))
+            conn.executemany(_INSERT_FILE, _file_rows(name, book))
         conn.commit()
     finally:
         conn.close()
@@ -137,7 +187,9 @@ def upsert(db_path: Path, name: str, book: Book) -> None:
         raise FileNotFoundError(db_path)
     conn = sqlite3.connect(db_path)
     try:
-        conn.execute(_UPSERT, _row(name, book))
+        conn.execute(_UPSERT, _row(name, book, library_root=db_path.parent))
+        conn.execute("DELETE FROM files WHERE name = ?", (name,))
+        conn.executemany(_INSERT_FILE, _file_rows(name, book))
         conn.commit()
     finally:
         conn.close()
@@ -159,6 +211,7 @@ def delete(db_path: Path, name: str) -> None:
     conn = sqlite3.connect(db_path)
     try:
         conn.execute("DELETE FROM books WHERE name = ?", (name,))
+        conn.execute("DELETE FROM files WHERE name = ?", (name,))
         conn.commit()
     finally:
         conn.close()
@@ -206,5 +259,72 @@ def search(db_path: Path, query: str) -> list[str]:
     return [str(row[0]) for row in rows]
 
 
-def _row(name: str, book: Book) -> tuple[str, str, str | None, str | None, int]:
-    return (name, book.title, book.author, book.isbn, int(book.needs_review))
+def rows(db_path: Path) -> list[Row]:
+    """Every indexed book's grouping fields, in folder-name order.
+
+    Args:
+        db_path: Path to a sqlite3 database previously built by
+            rebuild_index.
+
+    Returns:
+        One Row per indexed book.
+
+    Raises:
+        FileNotFoundError: If db_path does not exist.
+    """
+    if not db_path.exists():
+        raise FileNotFoundError(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        found = conn.execute(
+            "SELECT name, title, author, isbn, stamp FROM books ORDER BY name"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [Row(*row) for row in found]
+
+
+def names_by_hash(db_path: Path, hashes: Iterable[str]) -> dict[str, list[str]]:
+    """The book folders holding a format file with each of `hashes`.
+
+    Args:
+        db_path: Path to a sqlite3 database previously built by
+            rebuild_index.
+        hashes: Hex SHA-256 digests to look for.
+
+    Returns:
+        For each digest found, the folder names holding it, in
+        folder-name order. Digests found nowhere are absent.
+
+    Raises:
+        FileNotFoundError: If db_path does not exist.
+    """
+    if not db_path.exists():
+        raise FileNotFoundError(db_path)
+    wanted = sorted(set(hashes))
+    found: dict[str, list[str]] = {}
+    conn = sqlite3.connect(db_path)
+    try:
+        # Chunked to stay under sqlite's bound-parameter limit.
+        for start in range(0, len(wanted), 500):
+            chunk = wanted[start : start + 500]
+            marks = ",".join("?" * len(chunk))
+            for digest, name in conn.execute(
+                f"SELECT sha256, name FROM files WHERE sha256 IN ({marks}) ORDER BY name",
+                chunk,
+            ):
+                found.setdefault(digest, []).append(name)
+    finally:
+        conn.close()
+    return found
+
+
+def _file_rows(name: str, book: Book) -> list[tuple[str, str]]:
+    return [(fmt.sha256, name) for fmt in book.formats if fmt.sha256 is not None]
+
+
+def _row(
+    name: str, book: Book, *, library_root: Path
+) -> tuple[str, str, str | None, str | None, int, str | None]:
+    metadata_json = library_root / name / "metadata.json"
+    return (name, book.title, book.author, book.isbn, int(book.needs_review), stamp(metadata_json))

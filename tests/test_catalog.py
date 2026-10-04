@@ -1,9 +1,10 @@
 import json
+from datetime import datetime, timezone
 
 import pytest
 
 from bookman.errors import CatalogError
-from bookman.models import Book, BookFormat, FormatKind, MatchBasis, ReadIssue
+from bookman.models import Book, BookFormat, FormatKind, LookupOutcome, MatchBasis, ReadIssue
 from bookman.storage.catalog import load_metadata, save_metadata
 
 
@@ -189,12 +190,12 @@ def test_save_then_load_metadata_roundtrips_none_fields(tmp_path):
     assert loaded.needs_review is True
 
 
-def test_save_metadata_writes_schema_version_5_without_confidence(tmp_path):
+def test_save_metadata_writes_schema_version_6_without_confidence(tmp_path):
     directory, book = _make_book_dir(tmp_path)
     save_metadata(book, directory)
     data = json.loads((directory / "metadata.json").read_text())
 
-    assert data["version"] == 5
+    assert data["version"] == 6
     assert data["id"] == book.id
     assert "confidence" not in data
     assert data["identified"] == "isbn"
@@ -236,7 +237,7 @@ def test_load_metadata_upgrades_version_1_file_on_next_save(tmp_path):
     save_metadata(load_metadata(directory), directory)
     data = json.loads((directory / "metadata.json").read_text())
 
-    assert data["version"] == 5
+    assert data["version"] == 6
     assert data["identified"] == "isbn"
     assert data["id"]
 
@@ -263,7 +264,7 @@ def test_load_metadata_rejects_unknown_match_basis(tmp_path):
 def test_load_metadata_rejects_unsupported_schema_version(tmp_path):
     directory, book = _make_book_dir(tmp_path)
     save_metadata(book, directory)
-    data = (directory / "metadata.json").read_text().replace('"version": 5', '"version": 99')
+    data = (directory / "metadata.json").read_text().replace('"version": 6', '"version": 99')
     (directory / "metadata.json").write_text(data)
 
     with pytest.raises(ValueError):
@@ -347,7 +348,7 @@ def test_v3_file_without_record_author_loads_as_none(tmp_path):
     assert loaded.author == book.author
 
     save_metadata(loaded, directory)
-    assert json.loads((directory / "metadata.json").read_text())["version"] == 5
+    assert json.loads((directory / "metadata.json").read_text())["version"] == 6
 
 
 def test_pre_v3_derived_id_becomes_a_stored_id_on_save(tmp_path):
@@ -417,7 +418,7 @@ def test_v4_file_loads_with_no_read_issue_and_upgrades_on_save(tmp_path):
     loaded = load_metadata(directory)
     assert all(fmt.read_issue is None for fmt in loaded.formats)
     save_metadata(loaded, directory)
-    assert json.loads((directory / "metadata.json").read_text())["version"] == 5
+    assert json.loads((directory / "metadata.json").read_text())["version"] == 6
 
 
 def test_load_metadata_rejects_an_unknown_read_issue(tmp_path):
@@ -425,6 +426,82 @@ def test_load_metadata_rejects_an_unknown_read_issue(tmp_path):
     save_metadata(book, directory)
     data = json.loads((directory / "metadata.json").read_text())
     data["formats"][0]["read_issue"] = "haunted"
+    (directory / "metadata.json").write_text(json.dumps(data))
+
+    with pytest.raises(CatalogError):
+        load_metadata(directory)
+
+
+def test_v6_fields_round_trip(tmp_path):
+    # ADR-40, ADR-41: when the book was added, how its lookup went, and
+    # the hash of each format's bytes.
+    directory, book = _make_book_dir(tmp_path)
+    fmt = book.formats[0]
+    book.formats = [BookFormat(kind=fmt.kind, path=fmt.path, sha256="ab" * 32)]
+    book.added = datetime(2026, 10, 4, 12, 30, tzinfo=timezone.utc)
+    book.lookup = LookupOutcome.FAILED
+    save_metadata(book, directory)
+
+    data = json.loads((directory / "metadata.json").read_text())
+    assert data["added"] == "2026-10-04T12:30:00+00:00"
+    assert data["lookup"] == "failed"
+    assert data["formats"][0]["sha256"] == "ab" * 32
+    loaded = load_metadata(directory)
+    assert loaded.added == book.added
+    assert loaded.lookup is LookupOutcome.FAILED
+    assert loaded.formats[0].sha256 == "ab" * 32
+
+
+def test_a_format_without_a_hash_writes_no_sha256_key(tmp_path):
+    directory, book = _make_book_dir(tmp_path)
+    save_metadata(book, directory)
+    data = json.loads((directory / "metadata.json").read_text())
+    assert all("sha256" not in fmt for fmt in data["formats"])
+
+
+@pytest.mark.parametrize(
+    ("identified", "expected"),
+    [("isbn", LookupOutcome.IDENTIFIED), (None, None)],
+)
+def test_v5_file_reads_its_lookup_from_identified(tmp_path, identified, expected):
+    # spec lookup_outcome: an identified book from before v6 was IDENTIFIED;
+    # an unidentified one's outcome is unknown.
+    directory, book = _make_book_dir(tmp_path)
+    save_metadata(book, directory)
+    data = json.loads((directory / "metadata.json").read_text())
+    for key in ("lookup", "added"):
+        del data[key]
+    data["identified"] = identified
+    data["version"] = 5
+    (directory / "metadata.json").write_text(json.dumps(data))
+
+    loaded = load_metadata(directory)
+    assert loaded.lookup is expected
+    assert loaded.added is None
+    save_metadata(loaded, directory)
+    assert json.loads((directory / "metadata.json").read_text())["version"] == 6
+
+
+@pytest.mark.parametrize(
+    ("field", "bad"),
+    [("added", 20261004), ("added", "yesterday"), ("lookup", "maybe")],
+)
+def test_load_metadata_rejects_malformed_v6_fields(tmp_path, field, bad):
+    directory, book = _make_book_dir(tmp_path)
+    save_metadata(book, directory)
+    data = json.loads((directory / "metadata.json").read_text())
+    data[field] = bad
+    (directory / "metadata.json").write_text(json.dumps(data))
+
+    with pytest.raises(CatalogError):
+        load_metadata(directory)
+
+
+def test_load_metadata_rejects_a_malformed_sha256(tmp_path):
+    directory, book = _make_book_dir(tmp_path)
+    save_metadata(book, directory)
+    data = json.loads((directory / "metadata.json").read_text())
+    data["formats"][0]["sha256"] = "abc"
     (directory / "metadata.json").write_text(json.dumps(data))
 
     with pytest.raises(CatalogError):

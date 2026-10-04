@@ -6,29 +6,6 @@
 
 v1.1.0 is released. Post-1.1 work, in this order:
 
-TUI requests (inbox triage 2026-09-27) come first, then the items after them.
-
-- **`Book.added` + `ReadIssue.summary`**: an `added` timestamp set once
-  when a book is created, None for older books (FEATURES I11, J5).
-  Share the metadata.json v6 bump with the content hash below. A short,
-  sentence-cased `summary` beside `advice`, which stays the full next
-  step and stays lowercase for the CLI.
-- **Already-in-library check** (spec + ADR first: changes GROUP-4/F13
-  re-import). A content hash per format in metadata.json and the index,
-  `Library.find_file(path)` plus a batch form (offline, cheap enough for
-  an import preview of a few hundred files), checked before the parse
-  and lookup, and a new "already in library" outcome
-  (`ImportBatchResult.unchanged`). Covers most of the Backlog cache item.
-- **Persist the lookup outcome** (spec first: IDENT outcome recording,
-  E9). Identified / no match / lookup failed / not attempted (offline)
-  on `Book`, so a frontend can warn and retry exactly the failed ones.
-  A filter for it belongs in the query layer.
-- **Replace a wrong cover** (curation ADR; FEATURES K4):
-  `reidentify(book, replace_cover=True)` that leaves human-set fields
-  alone, and `set_cover(book, path | None)` for a local image or
-  removal. Today the only route (un-review, reidentify, re-review) can
-  overwrite an author the user just corrected.
-
 - **Decide OQ3 editions against the Calibre data** — 8 of the 12
   remaining splits have an edition marker on one side only (C7's accepted
   cost under ADR-23). Use the FIELD-NOTES Calibre table to decide whether
@@ -73,6 +50,7 @@ TUI requests (inbox triage 2026-09-27) come first, then the items after them.
 ## Done
 <!-- Completed items land here temporarily.
      The stop hook archives these to .claude/archive/YYYY-MM.md and clears this section. -->
+- **TUI import requests** (2026-10-04, PLAN items + third inbox round): GROUP-0 already-in-library check by per-format SHA-256 (`AlreadyInLibrary`, `ImportBatchResult.unchanged`, `find_file`/`find_files`), `Book.added`, metadata.json v6, index schema 3 (ADR-40); `Book.lookup`/`LookupOutcome` and the spec's `lookup_outcome` block, plus a `reidentify` downgrade fix (ADR-41); `set_cover` + `reidentify(replace_cover=True)` (ADR-42); `ReadIssue.summary`; `LibraryNotFoundError.reason`/`.location`, CLI-free messages, `str` paths (ADR-43). Import at ~2000 books ~0.17 → ~0.05 s/file: grouping reads index rows checked against each metadata.json's mtime+size, plus cached normalization. spec_version 7, 662 tests. Inbox entries deleted.
 - **Library marker, open-without-create, root origin** (2026-09-27, TUI SETUP-5/START-5): `.bookman-library.json` + `is_library`, `configured_library(create=False)` raising `LibraryNotFoundError`, `locate_library`/`LibraryLocation`/`LibraryOrigin` (ADR-39). CLI list/search/import refuse a missing or non-library root. 593 tests.
 - **Frontend guide `docs/API.md`** (2026-09-27): open → settings → import with progress → catalog → `Book` fields → curate → errors → plug in a source, citing `cli.py`; `test_public_api` fails if an `__all__` name is missing from it. README points to it.
 - **Config-driven source selection** (2026-09-27, TUI request): `Config.offline` + public `configured_library(explicit=None)` (ADR-38); CLI import/config/init use it. Source registry and per-book source provenance deferred to Backlog under N8. 573 tests.

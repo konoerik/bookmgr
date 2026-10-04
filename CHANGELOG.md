@@ -6,6 +6,50 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+For the TUI's import screens: recognizing files already in the library,
+saying why a book has no record, covers a user can fix, and imports that
+stay fast as the library grows.
+
+### Added
+- A file whose exact bytes the library already holds is recognized
+  before it is parsed or looked up and changes nothing: `iter_import`
+  yields an `AlreadyInLibrary` outcome and `ImportBatchResult.unchanged`
+  collects them; `bookman import` prints "already in library"
+  (spec GROUP-0, ADR-40).
+- `Library.find_file(path)` and `Library.find_files(paths)`: which book
+  already holds a file, offline and without importing, for an import
+  preview (ADR-40).
+- `Book.added` (when the import that created the book ran) and
+  `BookFormat.sha256` (the hash of each file's bytes), in metadata.json
+  schema 6; older books read None and are upgraded on their next save
+  (ADR-40).
+- `Book.lookup`, a `LookupOutcome`: identified, no match, failed, or not
+  attempted (offline), so a frontend can retry exactly the failed
+  lookups (spec `lookup_outcome`, ADR-41).
+- `Library.set_cover(book, image | None)` and
+  `Library.reidentify(book, replace_cover=True)`: supply, replace or
+  remove a cover without touching a reviewed book's other fields
+  (ADR-42).
+- `ReadIssue.summary`: a short, sentence-cased label beside `advice`.
+- `LibraryNotFoundError.reason` (a `LibraryNotFoundReason`) and
+  `.location` (ADR-43).
+
+### Changed
+- Re-importing a file already in the library no longer re-runs its
+  lookup; `reidentify` is the retry (ADR-40).
+- Public functions and methods that take a path accept a `str` or any
+  path-like object (ADR-43).
+- `LibraryNotFoundError` messages name a next step in frontend-neutral
+  words; the CLI adds its `bookman init` hint (ADR-43).
+- Importing into a large library is faster: grouping reads the search
+  index, checked against each `metadata.json`'s modification time and
+  size, rather than every `metadata.json` (about 3x at 2000 books).
+  The index's schema changes and it rebuilds itself.
+
+### Fixed
+- `reidentify` no longer clears `identified` when its lookup fails or
+  finds nothing that agrees, as its docstring always said (ADR-41).
+
 ## [1.2.0] - 2026-09-27
 
 For frontends: one way to open the configured library, telling a

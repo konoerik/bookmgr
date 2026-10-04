@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from uuid import uuid4
@@ -34,6 +35,28 @@ class MatchBasis(str, Enum):
     side so nothing corroborated it."""
 
 
+class LookupOutcome(str, Enum):
+    """What happened when bookman looked a book up (spec `lookup_outcome`,
+    ADR-41). `Book.identified` says how a record was matched; this says
+    what happened when none was, so a frontend can explain an
+    unidentified book and retry exactly the ones whose lookup failed.
+    """
+
+    IDENTIFIED = "identified"
+    """A record agreed with the file; `Book.identified` says on what evidence."""
+
+    NO_MATCH = "no_match"
+    """The source answered and nothing agreed, or the file named nothing to
+    look up (no ISBN, no usable title). Retrying asks the same question."""
+
+    FAILED = "failed"
+    """A request failed (network, timeout, a bad response) and no record was
+    accepted. The answer is unknown: `Library.reidentify` may find it."""
+
+    NOT_ATTEMPTED = "not_attempted"
+    """The library is offline (`Config.offline`), so nothing was looked up."""
+
+
 class ReadIssue(str, Enum):
     """Why bookman could not read inside a file it still imported.
 
@@ -41,7 +64,8 @@ class ReadIssue(str, Enum):
     bought -- but its contents are closed to bookman, so it was
     cataloged on its filename alone (spec PR6, ADR-29). Recorded on the
     `BookFormat`, not the `Book`: a book whose other format was readable
-    is not the worse for it. `advice` is the sentence to show the user.
+    is not the worse for it. `advice` is the sentence to show the user;
+    `summary` is a short label for a list or a status line.
     """
 
     NEEDS_CRYPTO = "needs_crypto"
@@ -60,6 +84,12 @@ class ReadIssue(str, Enum):
         person: the next step is always named."""
         return _READ_ISSUE_ADVICE[self]
 
+    @property
+    def summary(self) -> str:
+        """A short, sentence-cased label for a list row or a status line,
+        such as "Password-protected". `advice` is the full next step."""
+        return _READ_ISSUE_SUMMARY[self]
+
 
 _READ_ISSUE_ADVICE = {
     ReadIssue.NEEDS_CRYPTO: (
@@ -76,6 +106,13 @@ _READ_ISSUE_ADVICE = {
         "so bookman named the book after the file; check its title and author, "
         "and correct them by hand if needed"
     ),
+}
+
+
+_READ_ISSUE_SUMMARY = {
+    ReadIssue.NEEDS_CRYPTO: "Encrypted; needs bookman[crypto]",
+    ReadIssue.PASSWORD: "Password-protected",
+    ReadIssue.UNSUPPORTED_ENCRYPTION: "Unsupported encryption (DRM)",
 }
 
 
@@ -118,11 +155,16 @@ class BookFormat:
             later, readable import of the same file is a different book
             to bookman: the way back is to delete the folder and import
             again, which is what `ReadIssue.advice` says.
+        sha256: The hex SHA-256 of the file's bytes as bookman placed
+            them, or None for a file placed before bookman recorded
+            hashes. How a file already in the library is recognized
+            (spec GROUP-0, ADR-40).
     """
 
     kind: FormatKind
     path: Path
     read_issue: ReadIssue | None = None
+    sha256: str | None = None
 
 
 @dataclass
@@ -159,6 +201,13 @@ class Book:
             title/author/isbn/cover/identified. A TITLE_ONLY grouping
             into a reviewed book clears the flag, since the book's
             contents changed in a way that deserves another look.
+        lookup: What happened when bookman looked the book up: IDENTIFIED
+            exactly when `identified` is set; otherwise NO_MATCH, FAILED
+            (worth a `reidentify`) or NOT_ATTEMPTED (offline). None for
+            an unidentified book cataloged before bookman recorded it
+            (ADR-41).
+        added: When an import created this book, timezone-aware UTC.
+            None for a book cataloged before bookman recorded it.
         directory: The book's folder in the managed library -- where
             it lives, and its display name. None until the book has
             been persisted; set by every operation that reads or
@@ -177,6 +226,8 @@ class Book:
     identified: MatchBasis | None = None
     grouped: MatchBasis | None = None
     reviewed: bool = False
+    lookup: LookupOutcome | None = None
+    added: datetime | None = None
     directory: Path | None = None
 
     @property
@@ -195,3 +246,32 @@ class Book:
             or self.identified == MatchBasis.TITLE_ONLY
             or self.grouped == MatchBasis.TITLE_ONLY
         )
+
+
+# Strongest first; IDENTIFIED is not in the order, since it follows from
+# `identified` rather than competing with the others (spec lookup_outcome).
+_LOOKUP_STRENGTH = {
+    LookupOutcome.FAILED: 3,
+    LookupOutcome.NO_MATCH: 2,
+    LookupOutcome.NOT_ATTEMPTED: 1,
+}
+
+
+def fold_lookup(book: Book, outcome: LookupOutcome) -> None:
+    """Record one file's lookup `outcome` on `book`, after its
+    identification has been applied.
+
+    Spec: `lookup_outcome`, book_rules. IDENTIFIED whenever the book's
+    `identified` is set; otherwise the strongest outcome yet (failed >
+    no_match > not_attempted), so import order does not matter. A record
+    the book did not adopt (outcome IDENTIFIED, `identified` still None)
+    changes nothing.
+    """
+    if book.identified is not None:
+        book.lookup = LookupOutcome.IDENTIFIED
+    elif outcome is LookupOutcome.IDENTIFIED:
+        return
+    elif book.lookup is None or book.lookup is LookupOutcome.IDENTIFIED:
+        book.lookup = outcome
+    elif _LOOKUP_STRENGTH[outcome] > _LOOKUP_STRENGTH[book.lookup]:
+        book.lookup = outcome

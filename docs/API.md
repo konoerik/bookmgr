@@ -9,6 +9,9 @@ Everything below is importable from `bookman`. The public surface is exactly
 `bookman.__all__`, and anything else is internal. A test checks that every
 exported name appears in this guide.
 
+Every function or method that takes a filesystem path accepts a `str` or any
+path-like object as well as a `Path` (ADR-43).
+
 ## 1. Open the library
 
 ```python
@@ -36,8 +39,13 @@ It raises:
 - `LibraryNotConfiguredError` when nothing names a library (first run: offer to
   create one).
 - `LibraryNotFoundError` when the root is missing, is a file, or holds other
-  files but no library. Its `path` is the root, and its message says where the
-  root was named and what to do.
+  files but no library. Its `reason` (a `LibraryNotFoundReason`: `MISSING`,
+  `NOT_A_DIRECTORY`, `NOT_A_LIBRARY`) says which, so you can offer your own
+  next step (retry when a drive is connected, choose another folder) without
+  re-checking the disk. `path` is the root and `location` is the
+  `LibraryLocation` that named it. The message says what happened and the next
+  step in words that suit any frontend; the CLI adds its own `bookman init`
+  hint (ADR-43).
 - `ConfigError` when the config file is malformed (its message names the file).
 
 ### First run: is this folder a library?
@@ -101,15 +109,23 @@ source yourself, as tests do. `Library` never reads the config on its own.
 ## 2. Import with progress
 
 ```python
-from bookman import Book, FormatConflictError, ImportBatchResult, UnsupportedFormatError
+from bookman import (
+    AlreadyInLibrary,
+    Book,
+    FormatConflictError,
+    ImportBatchResult,
+    UnsupportedFormatError,
+)
 
 result = ImportBatchResult()
 for event in library.iter_import(folder, recursive=True):
     result.record(event)
     progress = event.index / event.total
     match event.outcome:
-        case None:  # about to parse + look up this file
+        case None:  # about to hash, parse + look up this file
             show_working_on(event.path)
+        case AlreadyInLibrary() as hit:  # these exact bytes are already here
+            show_unchanged(event.path, hit.book)
         case Book() as book:  # imported; the book as it stands now
             show_imported(event.path, book)
         case FormatConflictError() as conflict:
@@ -125,9 +141,31 @@ non-hidden file in the batch and is known from the first event, so a progress
 bar is exact from the start. Each file gets a "starting" event (outcome None)
 before the slow part (the parse and the network lookup), followed by its
 result. The exception is a skipped file, which gets only its result event.
-`ImportBatchResult.record` sorts the events into `imported`, `failed`,
-`skipped` and `conflicts`, which gives the same summary `import_directory`
-returns if you don't need progress. The CLI's `_cmd_import` is this loop.
+`ImportBatchResult.record` sorts the events into `imported`, `unchanged`,
+`failed`, `skipped` and `conflicts`, which gives the same summary
+`import_directory` returns if you don't need progress. The CLI's `_cmd_import`
+is this loop.
+
+**A file already in the library** costs a hash and nothing else. If a book
+already holds a file with the same bytes, nothing is parsed, looked up, copied
+or written, and the outcome is an `AlreadyInLibrary`: `source` (the file
+offered), `book` (the book holding it) and `existing` (that book's
+`BookFormat`). A re-import is therefore not a retry of a failed lookup; use
+`reidentify` for that (section 5). On its own, `import_file` returns the holding
+book unchanged (spec GROUP-0, ADR-40).
+
+### Preview: which of these do I already have?
+
+```python
+held = library.find_files(picked_paths)  # {path: Book} for the ones already here
+for path in picked_paths:
+    mark(path, held.get(path))
+```
+
+`find_file(path)` and `find_files(paths)` answer offline without importing:
+each file is read once to hash it, and one index query covers the lot. Files
+placed before bookman recorded hashes (libraries from before 1.3) are not found
+until they are next imported.
 
 For one file, `library.import_file(path)` returns the `Book` or raises. Files
 with a suffix outside `supported_suffixes()` are skipped in a batch and raise
@@ -170,18 +208,22 @@ edited by hand shows up in `search` after the next scan.
 | `author` | The file's author string, or None |
 | `record_author` | What the online record called the author, kept beside `author` as an alternative spelling to offer ("Open Library says…"). A difference is not a problem |
 | `isbn` | ISBN-13 found in one of the files, or None |
-| `formats` | One `BookFormat` per file: `kind` (a `FormatKind`: `EPUB`, `PDF`), `path`, and `read_issue` |
+| `formats` | One `BookFormat` per file: `kind` (a `FormatKind`: `EPUB`, `PDF`), `path`, `read_issue`, and `sha256` (the hash of the file's bytes, None for files placed before 1.3) |
 | `cover_path` | The cover on disk, or None. Always named `cover.png`, but the bytes are as received (often JPEG). Sniff the format; don't trust the suffix |
 | `identified` | A `MatchBasis` saying how the online record was matched to the file (`ISBN`, `TITLE_AUTHOR`, `TITLE_ONLY`), or None if no record agreed and everything came from the file |
 | `grouped` | The weakest `MatchBasis` that ever joined a second file into this book, or None for a single file |
 | `reviewed` | A human confirmed or corrected this book; imports won't overwrite it |
 | `needs_review` | Derived: not reviewed, and identified weakly or not at all, or grouped on title alone. This is the review queue |
+| `lookup` | A `LookupOutcome` saying what happened when bookman looked the book up: `IDENTIFIED` (exactly when `identified` is set), `NO_MATCH` (the source answered and nothing agreed, or the file named nothing to look up), `FAILED` (a request failed: `reidentify` may find it) or `NOT_ATTEMPTED` (offline). None for an unidentified book from before 1.3 |
+| `added` | When the import that created the book ran, as a timezone-aware UTC `datetime`, for sorting by arrival. None for books from before 1.3 |
 | `directory` | The book's folder: where it lives, and its display name. Not its identity |
 
 A `BookFormat.read_issue` is a `ReadIssue`. It means bookman could not read
 inside that file (encrypted, password, DRM), so the book was named after the
 filename. `read_issue.advice` is the sentence to show the user, and it always
 names the next step. The CLI prints it in `_print_read_issue`.
+`read_issue.summary` is a short, sentence-cased label for a list row or a
+status line ("Password-protected").
 
 The rules behind `identified` and `grouped` are specified in
 `docs/IDENTIFICATION.md`. To explain a flagged book, show which basis was weak.
@@ -193,6 +235,9 @@ library.mark_reviewed(book)  # take it off the queue
 library.mark_reviewed(book, False)  # put it back
 library.edit(book, title="Deep Work", author=None, isbn="978-1-4555-8669-1")
 library.reidentify(book)  # look it up again
+library.reidentify(book, replace_cover=True)  # ...and take the record's cover
+library.set_cover(book, picked_image)  # a local PNG/JPEG/GIF/WebP
+library.set_cover(book, None)  # no cover
 ```
 
 Each call takes a `Book` from `scan`, `search` or an import, saves it, and
@@ -202,8 +247,17 @@ has none (ADR-24).
 - `edit` changes only the fields you pass (None clears `author`/`isbn`), **sets
   `reviewed`** so the edit is durable, and renames the folder and files when
   the title changes. Re-read `directory`, `formats` and `cover_path` afterwards.
-- `reidentify` runs the lookup again. It is the usual route to a missing cover.
-  On a reviewed book it only fills gaps.
+- `reidentify` runs the lookup again. It is the usual route to a missing cover,
+  and the retry for books whose `lookup` is `FAILED`
+  (`[b for b in library.scan() if b.lookup is LookupOutcome.FAILED]`). On a
+  reviewed book it only fills gaps. A lookup that fails or finds nothing changes
+  nothing but `lookup`.
+- To replace a wrong cover, `reidentify(book, replace_cover=True)` takes the
+  record's cover even on a reviewed book, and leaves its title, author and ISBN
+  alone. `set_cover(book, image)` uses a local image instead, and
+  `set_cover(book, None)` removes the cover. Both `set_cover` calls **set
+  `reviewed`**, so a later import can't replace the user's choice (ADR-42). A
+  file that isn't a PNG, JPEG, GIF or WebP image raises `CatalogError`.
 
 ## 6. Errors
 
@@ -213,12 +267,12 @@ Everything bookman raises on purpose is a `BookmanError`. Anything else
 | Error | When |
 |---|---|
 | `LibraryNotConfiguredError` | No library is named anywhere |
-| `LibraryNotFoundError` | The named root is missing, a file, or not a library (section 1) |
+| `LibraryNotFoundError` | The named root is missing, a file, or not a library; `reason` says which (section 1) |
 | `ConfigError` | The config file is unreadable or the wrong shape |
 | `UnsupportedFormatError` | The suffix has no parser |
 | `ParseError` | The file isn't really its format: `BadEpubError`, `BadPdfError` |
 | `FormatConflictError` | The book already has a different file of this kind (section 2) |
-| `CatalogError` | A `metadata.json` is broken, or a curation call got a bad value (blank title, invalid ISBN, an unsaved book) |
+| `CatalogError` | A `metadata.json` is broken, or a curation call got a bad value (blank title, invalid ISBN, a cover that isn't an image, an unsaved book) |
 | `MetadataSourceError` | A lookup failed (`OpenLibraryError` for Open Library). Never escapes `Library`: a failed lookup means "no record", and the book is cataloged from its file |
 
 Messages name the file or setting involved and say what to do next where there

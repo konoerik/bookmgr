@@ -23,8 +23,8 @@ from bookman.identify.match import (
     is_usable_title,
     match_basis,
 )
-from bookman.identify.source import Candidate, MetadataSource, MetadataSourceError
-from bookman.models import MatchBasis, stronger_basis
+from bookman.identify.source import Candidate, MetadataSource, MetadataSourceError, NullSource
+from bookman.models import LookupOutcome, MatchBasis, stronger_basis
 
 T = TypeVar("T")
 _TRAILING_BRACKETS = re.compile(r"\s*[(\[][^()\[\]]*[)\]]\s*$")
@@ -57,6 +57,8 @@ class Identification:
             kept as provenance so a frontend can offer it beside the
             file's own spelling (ADR-22). None if no record was
             accepted or it named no author.
+        outcome: What happened when the file was looked up (spec
+            `lookup_outcome`, ADR-41).
     """
 
     title: str | None
@@ -66,6 +68,7 @@ class Identification:
     basis: MatchBasis | None
     isbns: tuple[str, ...] = ()
     record_author: str | None = None
+    outcome: LookupOutcome = LookupOutcome.NO_MATCH
 
 
 def identify(parsed: ParsedMetadata, source: MetadataSource) -> Identification:
@@ -90,6 +93,10 @@ def identify(parsed: ParsedMetadata, source: MetadataSource) -> Identification:
        can only be matched TITLE_ONLY, on an identical normalized title.
     3. If neither step accepted a record, or the lookup failed, return
        the file's own metadata with `basis=None`.
+
+    The `outcome` says which of those happened (spec `lookup_outcome`):
+    IDENTIFIED, FAILED if no record was accepted and any request
+    failed, NOT_ATTEMPTED for `NullSource` (offline), else NO_MATCH.
 
     An accepted record supplies the cover. The title and author stay
     the file's own: acceptance already established that the two agree,
@@ -127,8 +134,21 @@ def identify(parsed: ParsedMetadata, source: MetadataSource) -> Identification:
         _log.debug("IDENT-4 ignoring placeholder title %r", parsed.title)
         parsed = replace(parsed, title=None)
 
+    if isinstance(source, NullSource):
+        # lookup_outcome: offline, so nothing is asked of the source.
+        return Identification(
+            title=parsed.title,
+            author=parsed.author,
+            isbn=parsed.isbns[0] if parsed.isbns else None,
+            cover_url=None,
+            basis=None,
+            isbns=tuple(parsed.isbns),
+            outcome=LookupOutcome.NOT_ATTEMPTED,
+        )
+
     isbn: str | None = None
     rejected: set[str] = set()
+    failures: list[MetadataSourceError] = []
     # IDENT-1: try each ISBN in turn until one is accepted. A file can
     # legitimately carry the print and ebook ISBNs, or a cited list; the
     # first is not privileged.
@@ -137,6 +157,7 @@ def identify(parsed: ParsedMetadata, source: MetadataSource) -> Identification:
         record = _safe(
             functools.partial(source.lookup_by_isbn, file_isbn),
             f"IDENT-2 ISBN lookup {file_isbn}",
+            failures,
         )
         if record is None:
             # IDENT-2: keep the ISBN -- it is the file's own claim, and the
@@ -182,7 +203,7 @@ def identify(parsed: ParsedMetadata, source: MetadataSource) -> Identification:
     file_title = parsed.title
     if file_title:
         # IDENT-5: candidates are proposals; each must pass MATCH on its own.
-        candidates = _search(source, file_title, parsed.author)
+        candidates = _search(source, file_title, parsed.author, failures)
         best: tuple[Candidate, MatchBasis] | None = None
         for record in candidates:
             basis = match_basis(parsed.title, parsed.author, record.title, record.author)
@@ -212,6 +233,7 @@ def identify(parsed: ParsedMetadata, source: MetadataSource) -> Identification:
         cover_url=None,
         basis=None,
         isbns=_claimed(parsed, rejected),
+        outcome=LookupOutcome.FAILED if failures else LookupOutcome.NO_MATCH,
     )
 
 
@@ -255,20 +277,27 @@ def _accepted(
         basis=basis,
         record_author=record.author,
         isbns=_claimed(parsed, rejected),
+        outcome=LookupOutcome.IDENTIFIED,
     )
 
 
-def _search(source: MetadataSource, title: str, author: str | None) -> list[Candidate]:
+def _search(
+    source: MetadataSource,
+    title: str,
+    author: str | None,
+    failures: list[MetadataSourceError],
+) -> list[Candidate]:
     """IDENT-5's search (ADR-37): the title without a trailing bracketed
     tag ("(Humble)"), by author when there is one; and if that finds
     nothing at all, by title alone -- an author string the source does
     not index must not hide the book. The caller still judges every
     candidate with the file's own author."""
     query = _search_title(title)
-    candidates = _safe(lambda: source.search(query, author), f"IDENT-5 search {query!r}") or []
+    what = f"IDENT-5 search {query!r}"
+    candidates = _safe(lambda: source.search(query, author), what, failures) or []
     if not candidates and author:
         _log.debug("IDENT-5 nothing for %r by %r; searching by title alone", query, author)
-        candidates = _safe(lambda: source.search(query, None), f"IDENT-5 search {query!r}") or []
+        candidates = _safe(lambda: source.search(query, None), what, failures) or []
     return candidates
 
 
@@ -284,9 +313,11 @@ def _search_title(title: str) -> str:
     return query.strip() or title
 
 
-def _safe(call: Callable[[], T], what: str) -> T | None:
+def _safe(call: Callable[[], T], what: str, failures: list[MetadataSourceError]) -> T | None:
     """Run a lookup, treating a failed request the same as no record
-    (logged as a warning, since the outcome is now file-only).
+    (logged as a warning, since the outcome is now file-only) and
+    appending the error to `failures`, so the lookup's outcome can say
+    it failed rather than found nothing.
 
     Spec: IDENT-2's failure rule -- a lookup failure must never raise out
     of an import or degrade what is already known.
@@ -295,4 +326,5 @@ def _safe(call: Callable[[], T], what: str) -> T | None:
         return call()
     except MetadataSourceError as exc:
         _log.warning("%s failed, continuing without it: %s", what, exc)
+        failures.append(exc)
         return None

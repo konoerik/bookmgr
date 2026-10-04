@@ -30,7 +30,8 @@ as authority; the authority is the ADR cited beside them.
 - *Adding a scenario to FEATURES:* reference the step ID it exercises.
 
 Scope: the **Identify** and **Group** stages, plus the shared match rule
-they both call (ADR-9). **Parse** appears only as the input boundary and
+they both call (ADR-9), and GROUP-0, the already-in-library check that
+runs before them (ADR-40). **Parse** appears only as the input boundary and
 **Place** only as the exit; those are specified elsewhere.
 
 ---
@@ -39,6 +40,10 @@ they both call (ADR-9). **Parse** appears only as the input boundary and
 
 ```mermaid
 flowchart TD
+    GROUP0{"GROUP-0<br/>Are these exact bytes<br/>already in the library?"}
+    GROUP0 -->|yes| UNCHANGED["Already in library<br/>nothing is parsed, looked up or changed"]
+    GROUP0 -->|no| PARSE
+
     PARSE["PARSE<br/>title, author, ISBNs,<br/>and how the ISBNs were found<br/>(or why the file could not be read)"]
 
     PARSE --> IDENT1{"IDENT-1<br/>Any ISBN in the file?"}
@@ -184,8 +189,8 @@ Step IDs are stable — cite them from FEATURES rows, ADRs and commit
 messages.
 
 ```yaml
-spec_version: 6
-updated: 2026-09-26
+spec_version: 7
+updated: 2026-10-04
 scope: identify + group, and the match rule they share
 derived_from:
   - CLAUDE.md                # project goal and scope
@@ -211,6 +216,8 @@ derived_from:
   - ADR-34                   # titles also agree when their full forms (subtitle kept) agree
   - ADR-36                   # an import that upgrades the title renames the folder, like an edit
   - ADR-37                   # search without a trailing bracket tag; retry by title alone when empty
+  - ADR-40                   # a file already in the library is recognized by its content hash, before parsing
+  - ADR-41                   # the outcome of the lookup is recorded on the book
   - FIELD-NOTES.md           # shapes seen in real bundles; FN-n cited where a rule came from one
 # FEATURES rows named in `sources:` below are illustrative scenarios,
 # not sources of authority. See the History note at the top of this file.
@@ -286,6 +293,32 @@ inputs:
       sources: [ADR-29, "FEATURES H5", "FEATURES H14"]
 
 steps:
+
+  - id: GROUP-0
+    stage: group
+    question: Are this file's exact bytes already in the library?
+    rules:
+      - >
+        Asked before the file is parsed or looked up, so a bundle
+        imported a second time costs a hash per file and nothing else.
+        The answer comes from a content hash recorded for each format
+        file when it was placed; a file whose recorded copy has gone
+        missing from its folder is not in the library.
+      - >
+        A format placed before hashes were recorded has none, so its
+        bytes are not found here. Such a file walks the pipeline and
+        reaches GROUP-4's re-import rule, which compares it with the
+        folder's copy and records the hash from then on.
+    outcomes:
+      - when: a format file in the library has these bytes
+        then: >
+          The file is already in the library. Nothing is parsed, looked
+          up, copied or written, and the book is reported unchanged as
+          the book that holds the file. A re-import is therefore not a
+          retry of a failed lookup; re-identifying the book is.
+        sources: [ADR-40, "FEATURES F13", "FEATURES L6"]
+      - when: no format file has these bytes
+        then: Go to PARSE.
 
   - id: MATCH-0
     stage: match
@@ -719,15 +752,57 @@ steps:
         set.
         sources: ADR-9, FEATURES F12
       - >
-        Re-importing the same file is idempotent: one format entry, the
-        file replaced. "The same file" means the same bytes, judged
-        against the file already in the folder — no stored provenance is
-        needed to tell it from a different file of the same kind.
-        sources: FEATURES F13, ADR-21
+        Re-importing the same file is idempotent. GROUP-0 normally
+        catches it before parsing; one that reaches this step — a format
+        placed before content hashes were recorded — is judged by bytes
+        against the file already in the folder: one format entry, the
+        file replaced, and its hash recorded so GROUP-0 knows it next
+        time.
+        sources: FEATURES F13, ADR-21, ADR-40
       - >
         Import order must not change the end state: the same set of files
         in any order yields the same book.
         sources: FEATURES F16
+
+lookup_outcome:
+  rule: >
+    Every file's lookup ends in one of four outcomes, and the book records
+    one, so a frontend can say why a book has no record and retry exactly
+    the books whose lookup did not finish. `identified` already says *how*
+    a record was matched; the outcome says what happened when none was.
+  values:
+    - id: identified
+      when: A record was accepted (IDENT-3 or IDENT-5).
+    - id: no_match
+      when: >
+        Every lookup was answered and nothing agreed — including a file
+        with no ISBN and no usable title, which had nothing to look up
+        (IDENT-4). Retrying asks the same question again.
+    - id: failed
+      when: >
+        No record was accepted and at least one request failed (IDENT-2's
+        failure rule). The answer is unknown; a retry may find the book.
+    - id: not_attempted
+      when: The library is offline, so no lookup was made.
+  book_rules:
+    - >
+      A book is `identified` exactly when its `identified` basis is set.
+      Otherwise it holds the strongest outcome any of its files' lookups
+      reached, in the order failed, no_match, not_attempted: a lookup
+      that did not finish stays visible until a later lookup of the book
+      settles it. Taking the strongest rather than the latest keeps
+      GROUP-4's order-independence rule.
+    - >
+      A file identified by a record the book did not adopt — the book is
+      reviewed, or the record came through another ISBN (ADR-27) —
+      changes nothing here.
+    - >
+      Re-identifying a book is a fresh lookup of the whole book and
+      replaces its outcome, unless the book stays `identified`.
+    - >
+      A book cataloged before the outcome was recorded has none; one with
+      an `identified` basis is read as `identified`.
+  sources: [ADR-41, PR1, "FEATURES E9", "FEATURES I15"]
 
 review_queue:
   rule: >

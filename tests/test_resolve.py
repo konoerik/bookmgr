@@ -3,8 +3,8 @@ from helpers import FakeSource
 
 from bookman.formats import ParsedMetadata
 from bookman.identify.resolve import identify
-from bookman.identify.source import Candidate
-from bookman.models import MatchBasis
+from bookman.identify.source import Candidate, NullSource
+from bookman.models import LookupOutcome, MatchBasis
 
 ISBN = "9780306406157"
 DEEP_WORK = Candidate(title="Deep Work", author="Cal Newport", cover_url="dw.jpg")
@@ -485,3 +485,50 @@ def test_identify_does_not_retry_when_the_first_search_found_candidates():
     source = _PickySource({("Accounting 101", "Michele Cagan"): [other]})
     identify(_parsed(title="Accounting 101", author="Michele Cagan"), source)
     assert len([c for c in source.calls if c[0] == "search"]) == 1
+
+
+# --- spec lookup_outcome (ADR-41) ----------------------------------------
+
+
+def test_identify_reports_a_failed_lookup(source):
+    source.fail = True
+
+    assert identify(_parsed(isbns=[ISBN]), source).outcome is LookupOutcome.FAILED
+
+
+def test_identify_reports_failed_when_any_request_failed_and_nothing_agreed(source):
+    # The ISBN lookup fails; the search answers with nothing that agrees.
+    source.fail_isbns = {ISBN}
+    source.results = []
+
+    assert identify(_parsed(isbns=[ISBN]), source).outcome is LookupOutcome.FAILED
+
+
+def test_identify_reports_identified_even_after_a_failed_request(source):
+    source.fail_isbns = {ISBN}
+    source.results = [Candidate(title="Deep Work", author="Cal Newport", cover_url=None)]
+
+    found = identify(_parsed(isbns=[ISBN]), source)
+
+    assert found.outcome is LookupOutcome.IDENTIFIED
+
+
+def test_identify_reports_no_match_when_nothing_agrees(source):
+    source.results = [Candidate(title="Emma", author="Jane Austen", cover_url=None)]
+
+    assert identify(_parsed(), source).outcome is LookupOutcome.NO_MATCH
+
+
+def test_identify_reports_no_match_with_nothing_to_look_up(source):
+    found = identify(ParsedMetadata(title=None, author="Cal Newport"), source)
+
+    assert found.outcome is LookupOutcome.NO_MATCH
+
+
+def test_identify_asks_nothing_of_an_offline_source():
+    found = identify(_parsed(isbns=[ISBN]), NullSource())
+
+    assert found.outcome is LookupOutcome.NOT_ATTEMPTED
+    assert found.basis is None
+    assert found.isbn == ISBN
+    assert found.isbns == (ISBN,)

@@ -17,9 +17,14 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from bookman.errors import ConfigError, LibraryNotConfiguredError, LibraryNotFoundError
+from bookman.errors import (
+    ConfigError,
+    LibraryNotConfiguredError,
+    LibraryNotFoundError,
+    LibraryNotFoundReason,
+)
 from bookman.identify.source import NullSource
-from bookman.library import Library, is_library
+from bookman.library import Library, StrPath, is_library
 
 ENV_LIBRARY = "BOOKMAN_LIBRARY"
 ENV_CONFIG = "BOOKMAN_CONFIG"
@@ -162,7 +167,7 @@ class LibraryLocation:
         return "passed explicitly"
 
 
-def locate_library(explicit: Path | None = None) -> LibraryLocation:
+def locate_library(explicit: StrPath | None = None) -> LibraryLocation:
     """Decide which library root to use, and say where it was named.
 
     Precedence: `explicit` (e.g. a `--library` flag), then the
@@ -183,7 +188,7 @@ def locate_library(explicit: Path | None = None) -> LibraryLocation:
             but is malformed (see `load_config`).
     """
     if explicit is not None:
-        return LibraryLocation(explicit, LibraryOrigin.EXPLICIT)
+        return LibraryLocation(Path(explicit), LibraryOrigin.EXPLICIT)
     env = os.environ.get(ENV_LIBRARY)
     if env:
         return LibraryLocation(Path(env).expanduser(), LibraryOrigin.ENVIRONMENT)
@@ -196,7 +201,7 @@ def locate_library(explicit: Path | None = None) -> LibraryLocation:
     return LibraryLocation(config.library, LibraryOrigin.CONFIG, path)
 
 
-def resolve_library(explicit: Path | None = None) -> Path:
+def resolve_library(explicit: StrPath | None = None) -> Path:
     """Decide which library root to use: `locate_library(explicit).path`.
 
     Precedence: `explicit` (e.g. a `--library` flag), then the
@@ -218,7 +223,7 @@ def resolve_library(explicit: Path | None = None) -> Path:
     return locate_library(explicit).path
 
 
-def configured_library(explicit: Path | None = None, *, create: bool = False) -> Library:
+def configured_library(explicit: StrPath | None = None, *, create: bool = False) -> Library:
     """Open the library the user configured, with the metadata source
     their settings choose.
 
@@ -250,29 +255,36 @@ def configured_library(explicit: Path | None = None, *, create: bool = False) ->
         LibraryNotConfiguredError: If nothing names a library.
         LibraryNotFoundError: If `create` is not set and the root is
             missing or holds other files but no library; or, either
-            way, if the root is a file.
+            way, if the root is a file. Its `reason` says which.
         ConfigError: If the config file exists but is malformed.
     """
     location = locate_library(explicit)
     root = location.path
     where = location.describe()
+    # ADR-43: the next step in each message suits any frontend; the CLI
+    # adds its `bookman init` hint, a frontend reads `reason`.
     if root.exists() and not root.is_dir():
         raise LibraryNotFoundError(
-            root, f"library path is not a directory: {root} ({where}); choose a folder instead"
+            root,
+            f"library path is not a directory: {root} ({where}); choose a folder instead",
+            reason=LibraryNotFoundReason.NOT_A_DIRECTORY,
+            location=location,
         )
     if not create and not root.exists():
         raise LibraryNotFoundError(
             root,
             f"library not found: {root} ({where}) does not exist; if it is on a drive, "
-            "connect it and try again, otherwise run `bookman init <dir>` to choose "
-            "or create a library",
+            "connect it and try again, otherwise choose or create a library",
+            reason=LibraryNotFoundReason.MISSING,
+            location=location,
         )
     if not create and not is_library(root) and not _is_empty(root):
         raise LibraryNotFoundError(
             root,
             f"not a bookman library: {root} ({where}) holds other files; a library "
-            "is a folder of its own, so run `bookman init <new dir>` and import "
-            "these files into it",
+            "is a folder of its own, so create a new one and import these files into it",
+            reason=LibraryNotFoundReason.NOT_A_LIBRARY,
+            location=location,
         )
     config = load_config()
     offline = config is not None and config.offline

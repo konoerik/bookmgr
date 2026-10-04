@@ -26,6 +26,7 @@ from bookman.errors import (
     FormatConflictError,
     LibraryNotConfiguredError,
     LibraryNotFoundError,
+    LibraryNotFoundReason,
     MetadataSourceError,
     ParseError,
     UnsupportedFormatError,
@@ -35,14 +36,15 @@ from bookman.formats.epub import BadEpubError
 from bookman.formats.pdf import BadPdfError
 from bookman.identify.openlibrary import OpenLibraryError, OpenLibrarySource
 from bookman.identify.source import Candidate, MetadataSource, NullSource
-from bookman.library import ImportBatchResult, ImportEvent, Library, is_library
-from bookman.models import Book, BookFormat, FormatKind, MatchBasis, ReadIssue
+from bookman.library import AlreadyInLibrary, ImportBatchResult, ImportEvent, Library, is_library
+from bookman.models import Book, BookFormat, FormatKind, LookupOutcome, MatchBasis, ReadIssue
 
 # Library convention: emit under the "bookman" logger and let the
 # application decide whether anything is shown.
 logging.getLogger("bookman").addHandler(logging.NullHandler())
 
 __all__ = [
+    "AlreadyInLibrary",
     "BadEpubError",
     "BadPdfError",
     "Book",
@@ -60,7 +62,9 @@ __all__ = [
     "LibraryLocation",
     "LibraryNotConfiguredError",
     "LibraryNotFoundError",
+    "LibraryNotFoundReason",
     "LibraryOrigin",
+    "LookupOutcome",
     "MatchBasis",
     "MetadataSource",
     "MetadataSourceError",

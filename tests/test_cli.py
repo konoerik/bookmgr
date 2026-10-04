@@ -97,14 +97,14 @@ def test_import_directory_prints_each_file_as_it_finishes(tmp_path, capsys, monk
     _make_epub(source_dir / "a.epub", title="Book A")
     _make_epub(source_dir / "b.epub", title="Book B")
     seen_before_second: list[str] = []
-    original = Library.import_file
+    original = Library._import
 
     def spy(self, path):
         if path.name == "b.epub":
             seen_before_second.append(capsys.readouterr().out)
         return original(self, path)
 
-    monkeypatch.setattr(Library, "import_file", spy)
+    monkeypatch.setattr(Library, "_import", spy)
 
     cli.main(["-l", str(library_root), "import", str(source_dir)])
 
@@ -715,3 +715,34 @@ def test_import_says_what_to_do_when_the_disk_is_full(tmp_path, capsys, monkeypa
     assert code == 1
     assert "not enough disk space to copy it into the library" in err
     assert "free up space, then import it again" in err
+
+
+def test_a_missing_saved_library_gets_the_clis_init_hint(tmp_path, config_file, capsys):
+    # ADR-43: bookman's message is frontend-neutral; the CLI adds its step.
+    config.save_config(config.Config(library=tmp_path / "Unplugged"), config_file)
+
+    code = cli.main(["list"])
+
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "connect it and try again, otherwise choose or create a library" in err
+    assert err.rstrip().endswith("(run `bookman init <dir>`)")
+
+
+def test_importing_a_file_already_in_the_library_says_so(tmp_path, capsys):
+    library_root = tmp_path / "Library"
+    source_dir = tmp_path / "Source"
+    source_dir.mkdir()
+    epub = _make_epub(source_dir / "a.epub", title="Deep Work", author="Cal Newport")
+    cli.main(["-l", str(library_root), "import", str(epub)])
+    capsys.readouterr()
+
+    single = cli.main(["-l", str(library_root), "import", str(epub)])
+    single_out = capsys.readouterr().out
+    batch = cli.main(["-l", str(library_root), "import", str(source_dir)])
+    batch_out = capsys.readouterr().out
+
+    assert single == batch == 0
+    assert "already in library: Deep Work" in single_out
+    assert "[1/1] a.epub ... already in library: Deep Work" in batch_out
+    assert "0 imported, 0 failed, 1 already in library" in batch_out

@@ -12,6 +12,7 @@ This module is the MATCH rule of `docs/IDENTIFICATION.md` (steps MATCH-0..3)
 from __future__ import annotations
 
 import difflib
+import functools
 import re
 import unicodedata
 
@@ -150,6 +151,9 @@ def full_title_form(title: str) -> str:
     return _normalize(title, keep_subtitle=True)
 
 
+# Pure, and called for every existing book on every import (GROUP-2), on
+# the same few thousand titles over and over.
+@functools.lru_cache(maxsize=16384)
 def _normalize(title: str, *, keep_subtitle: bool) -> str:
     text = unicodedata.normalize("NFKC", title).casefold().strip()
     text, edition = _lift_edition(text)
@@ -311,6 +315,13 @@ def author_surnames(author: str) -> set[str]:
     Returns:
         The set of normalized surnames. Empty if none could be found.
     """
+    return set(_surnames(author))
+
+
+@functools.lru_cache(maxsize=16384)
+def _surnames(author: str) -> frozenset[str]:
+    """`author_surnames`, cached: pure, and asked of every existing book
+    on every import (GROUP-2)."""
     surnames: set[str] = set()
     for part in _AUTHOR_SEPARATORS.split(author):
         for name in _split_on_commas(_strip_accents(part).casefold().strip()):
@@ -319,7 +330,7 @@ def author_surnames(author: str) -> set[str]:
             tokens = _name_tokens(name)
             if tokens:
                 surnames.add(tokens[-1])
-    return surnames
+    return frozenset(surnames)
 
 
 def _name_tokens(name: str) -> list[str]:
@@ -360,8 +371,8 @@ def authors_agree(a: str | None, b: str | None) -> bool | None:
     """
     if not a or not b:
         return None
-    surnames_a = author_surnames(a)
-    surnames_b = author_surnames(b)
+    surnames_a = _surnames(a)
+    surnames_b = _surnames(b)
     if not surnames_a or not surnames_b:
         return None
     return bool(surnames_a & surnames_b)

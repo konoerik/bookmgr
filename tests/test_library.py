@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,7 @@ from bookman.errors import FormatConflictError, UnsupportedFormatError
 from bookman.formats.epub import BadEpubError
 from bookman.identify.source import Candidate, NullSource
 from bookman.library import MARKER_NAME, ImportBatchResult, Library, _sanitize_dirname, is_library
-from bookman.models import Book, BookFormat, FormatKind, MatchBasis, ReadIssue
+from bookman.models import Book, BookFormat, FormatKind, LookupOutcome, MatchBasis, ReadIssue
 from bookman.storage.catalog import save_metadata
 
 _LONG_PREFIX = (
@@ -253,8 +254,8 @@ def test_import_file_keeps_placeholder_titled_files_as_separate_books(tmp_path, 
     # own filename stem (A4/A8) rather than a folder called "Untitled".
     source.results = []
 
-    library.import_file(_make_epub(tmp_path / "a.epub", title="Untitled", author=None))
-    library.import_file(_make_epub(tmp_path / "b.epub", title="Untitled", author=None))
+    library.import_file(_make_epub(tmp_path / "a.epub", title="Untitled", author=None, filler="a"))
+    library.import_file(_make_epub(tmp_path / "b.epub", title="Untitled", author=None, filler="b"))
 
     books = library.scan()
     assert len(books) == 2
@@ -268,8 +269,8 @@ def test_import_file_keeps_generic_titled_files_as_separate_books(tmp_path, libr
     # corroborate it, is not evidence that these are the same book.
     source.results = []
 
-    library.import_file(_make_epub(tmp_path / "a.epub", title="Book", author=None))
-    library.import_file(_make_epub(tmp_path / "b.epub", title="Book", author=None))
+    library.import_file(_make_epub(tmp_path / "a.epub", title="Book", author=None, filler="a"))
+    library.import_file(_make_epub(tmp_path / "b.epub", title="Book", author=None, filler="b"))
 
     assert len(library.scan()) == 2
 
@@ -786,7 +787,8 @@ def test_import_directory_ignores_subdirectories_unless_recursive(tmp_path, libr
     assert {book.title for _, book in non_recursive.imported} == {"Book A"}
 
     recursive = library.import_directory(source_dir, recursive=True)
-    assert {book.title for _, book in recursive.imported} == {"Book A", "Book B"}
+    assert {book.title for _, book in recursive.imported} == {"Book B"}
+    assert [hit.book.title for hit in recursive.unchanged] == ["Book A"]
 
 
 def test_import_directory_records_failures_without_aborting_the_batch(tmp_path, library):
@@ -1431,7 +1433,7 @@ def test_a_failed_copy_leaves_no_half_imported_folder(tmp_path, library, monkeyp
     with pytest.raises(OSError):
         library.import_file(source)
 
-    assert [p.name for p in library.root.iterdir()] == [MARKER_NAME]
+    assert [p.name for p in library.root.iterdir() if p.is_dir()] == []
 
 
 def test_a_failed_copy_of_a_second_format_leaves_the_book_as_it_was(tmp_path, library, monkeypatch):
@@ -1450,8 +1452,10 @@ def test_a_failed_copy_of_a_second_format_leaves_the_book_as_it_was(tmp_path, li
 
 
 def test_a_failed_reimport_does_not_damage_the_file_already_there(tmp_path, library, monkeypatch):
+    # A book from before content hashes (ADR-40) is the one whose re-import
+    # still copies: GROUP-0 cannot recognize it, GROUP-4 compares bytes.
     source = _make_epub(tmp_path / "a.epub", title="Deep Work", author="Cal Newport")
-    book = library.import_file(source)
+    book = _without_hashes(library.import_file(source))
     placed = book.formats[0].path
     original = placed.read_bytes()
     monkeypatch.setattr("bookman.library.shutil.copyfile", _disk_fills_up_after(b"trunc"))
@@ -1461,6 +1465,13 @@ def test_a_failed_reimport_does_not_damage_the_file_already_there(tmp_path, libr
 
     assert placed.read_bytes() == original
     assert not [p for p in book.directory.iterdir() if p.name.endswith(".partial")]
+
+
+def _without_hashes(book):
+    """Rewrite `book` as a library from before content hashes left it."""
+    book.formats = [replace(fmt, sha256=None) for fmt in book.formats]
+    save_metadata(book, book.directory)
+    return book
 
 
 def test_a_new_library_is_marked_and_recognised(tmp_path):
@@ -1499,3 +1510,236 @@ def test_a_library_from_before_the_marker_is_recognised_and_marked_on_open(tmp_p
     Library(root)
 
     assert (root / MARKER_NAME).is_file()
+
+
+# --- GROUP-0: already in the library (ADR-40) ---------------------------
+
+
+def _sha256_of(path):
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_a_placed_format_records_the_hash_of_its_bytes(tmp_path, library):
+    source = _make_epub(tmp_path / "a.epub", title="Deep Work", author="Cal Newport")
+
+    book = library.import_file(source)
+
+    assert book.formats[0].sha256 == _sha256_of(source)
+    assert library.scan()[0].formats[0].sha256 == _sha256_of(source)
+
+
+def test_reimporting_the_same_bytes_parses_and_looks_up_nothing(tmp_path, library, source):
+    epub = _make_epub(tmp_path / "a.epub", title="Deep Work", author="Cal Newport")
+    first = library.import_file(epub)
+    metadata = first.directory / "metadata.json"
+    before = metadata.read_bytes(), metadata.stat().st_mtime_ns
+    source.calls.clear()
+
+    again = library.import_file(epub)
+
+    assert again.id == first.id
+    assert source.calls == []
+    assert (metadata.read_bytes(), metadata.stat().st_mtime_ns) == before
+
+
+def test_the_same_bytes_under_another_name_are_already_in_the_library(tmp_path, library):
+    epub = _make_epub(tmp_path / "a.epub", title="Deep Work", author="Cal Newport")
+    library.import_file(epub)
+    copy = tmp_path / "renamed copy.epub"
+    copy.write_bytes(epub.read_bytes())
+
+    [_, (_, event)] = _pairs(library.iter_import(tmp_path))
+
+    assert event.path == copy
+    assert event.outcome.source == copy
+    assert event.outcome.existing.path.name == "Deep Work.epub"
+    assert len(library.scan()) == 1
+
+
+def _pairs(events):
+    """Group iter_import's events by file: (starting, outcome) per file."""
+    events = list(events)
+    return [(events[i], events[i + 1]) for i in range(0, len(events), 2)]
+
+
+def test_iter_import_reports_a_file_already_in_the_library(tmp_path, library):
+    from bookman.library import AlreadyInLibrary
+
+    source_dir = tmp_path / "Source"
+    source_dir.mkdir()
+    epub = _make_epub(source_dir / "a.epub", title="Deep Work", author="Cal Newport")
+    book = library.import_file(epub)
+
+    events = list(library.iter_import(source_dir))
+    result = ImportBatchResult()
+    for event in events:
+        result.record(event)
+
+    assert [e.outcome for e in events][0] is None
+    hit = events[1].outcome
+    assert isinstance(hit, AlreadyInLibrary)
+    assert hit.source == epub
+    assert hit.book.id == book.id
+    assert hit.existing.path == book.formats[0].path
+    assert result.unchanged == [hit]
+    assert result.imported == []
+
+
+def test_a_recorded_file_missing_from_its_folder_is_not_in_the_library(tmp_path, library):
+    epub = _make_epub(tmp_path / "a.epub", title="Deep Work", author="Cal Newport")
+    book = library.import_file(epub)
+    book.formats[0].path.unlink()
+
+    assert library.find_file(epub) is None
+    again = library.import_file(epub)
+    assert again.formats[0].path.is_file()
+
+
+def test_a_format_from_before_hashes_is_reimported_once_and_then_recognized(
+    tmp_path, library, source
+):
+    epub = _make_epub(tmp_path / "a.epub", title="Deep Work", author="Cal Newport")
+    _without_hashes(library.import_file(epub))
+    assert library.find_file(epub) is None
+
+    upgraded = library.import_file(epub)  # GROUP-4's byte comparison
+
+    assert upgraded.formats[0].sha256 == _sha256_of(epub)
+    source.calls.clear()
+    library.import_file(epub)
+    assert source.calls == []
+
+
+def test_find_file_and_find_files_answer_without_importing(tmp_path, library, source):
+    known = _make_epub(tmp_path / "a.epub", title="Deep Work", author="Cal Newport")
+    book = library.import_file(known)
+    unknown = _make_epub(tmp_path / "b.epub", title="Dune", author="Frank Herbert")
+    source.calls.clear()
+
+    assert library.find_file(known).id == book.id
+    assert library.find_file(str(unknown)) is None
+    found = library.find_files([known, str(unknown)])
+    assert list(found) == [known]
+    assert found[known].id == book.id
+    assert source.calls == []
+    assert len(library.scan()) == 1
+
+
+def test_find_file_raises_for_a_missing_file(tmp_path, library):
+    with pytest.raises(FileNotFoundError):
+        library.find_file(tmp_path / "nope.epub")
+
+
+def test_grouping_sees_a_metadata_json_edited_by_hand(tmp_path, library):
+    # ADR-24's way to fix a book without a frontend: edit metadata.json.
+    # The next import must group against the edit, not the index's copy.
+    import json
+
+    book = library.import_file(_make_epub(tmp_path / "a.epub", title="Wrong", author="Cal Newport"))
+    metadata = book.directory / "metadata.json"
+    data = json.loads(metadata.read_text())
+    data["title"] = "Deep Work"
+    metadata.write_text(json.dumps(data))
+
+    joined = library.import_file(
+        _make_pdf(tmp_path / "b.pdf", title="Deep Work", author="Cal Newport")
+    )
+
+    assert joined.id == book.id
+    assert len(library.scan()) == 1
+
+
+def test_library_paths_may_be_strings(tmp_path, source):
+    # ADR-43: a Makefile one-liner hands over a str.
+    library = Library(str(tmp_path / "Library"), source=source)
+    epub = _make_epub(tmp_path / "a.epub", title="Deep Work", author="Cal Newport")
+
+    book = library.import_file(str(epub))
+
+    assert library.root == tmp_path / "Library"
+    assert is_library(str(tmp_path / "Library"))
+    assert book.directory.parent == tmp_path / "Library"
+    assert library.import_directory(str(tmp_path)).unchanged
+
+
+# --- added, and the lookup outcome (ADR-40, ADR-41) --------------------
+
+
+def test_a_new_book_records_when_it_was_added_and_keeps_it(tmp_path, library):
+    from datetime import datetime, timezone
+
+    before = datetime.now(timezone.utc)
+    book = library.import_file(_make_epub(tmp_path / "a.epub", title="Dune", author="F Herbert"))
+    added = book.added
+
+    assert added is not None and before <= added <= datetime.now(timezone.utc)
+    joined = library.import_file(_make_pdf(tmp_path / "b.pdf", title="Dune", author="F Herbert"))
+    assert joined.added == added
+    assert library.scan()[0].added == added
+
+
+@pytest.mark.parametrize(
+    ("setup", "expected"),
+    [
+        (lambda s: setattr(s, "results", []), "no_match"),
+        (lambda s: setattr(s, "fail", True), "failed"),
+        (
+            lambda s: setattr(
+                s, "results", [Candidate(title="Dune", author="F Herbert", cover_url=None)]
+            ),
+            "identified",
+        ),
+    ],
+)
+def test_an_import_records_its_lookup_outcome(tmp_path, library, source, setup, expected):
+    setup(source)
+
+    book = library.import_file(_make_epub(tmp_path / "a.epub", title="Dune", author="F Herbert"))
+
+    assert book.lookup.value == expected
+    assert library.scan()[0].lookup.value == expected
+
+
+def test_an_offline_import_records_that_nothing_was_looked_up(tmp_path):
+    library = Library(tmp_path / "Library", source=NullSource())
+
+    book = library.import_file(_make_epub(tmp_path / "a.epub", title="Dune", author="F Herbert"))
+
+    assert book.lookup is LookupOutcome.NOT_ATTEMPTED
+
+
+def test_a_file_with_nothing_to_look_up_records_no_match(tmp_path, library, source):
+    book = library.import_file(_make_epub(tmp_path / "a.epub", title=None))
+
+    assert book.lookup is LookupOutcome.NO_MATCH
+    assert source.calls == []
+
+
+@pytest.mark.parametrize("failed_first", [True, False])
+def test_a_failed_lookup_stays_visible_whatever_the_import_order(
+    tmp_path, library, source, failed_first
+):
+    # spec lookup_outcome: the strongest outcome, not the latest, so the
+    # end state does not depend on order (GROUP-4).
+    epub = _make_epub(tmp_path / "a.epub", title="Dune", author="F Herbert")
+    pdf = _make_pdf(tmp_path / "b.pdf", title="Dune", author="F Herbert")
+    for path, fail in ((epub, failed_first), (pdf, not failed_first)):
+        source.fail = fail
+        book = library.import_file(path)
+
+    assert len(book.formats) == 2
+    assert book.lookup is LookupOutcome.FAILED
+
+
+def test_a_follow_up_that_identifies_the_book_makes_it_identified(tmp_path, library, source):
+    source.fail = True
+    library.import_file(_make_epub(tmp_path / "a.epub", title="Dune", author="F Herbert"))
+    source.fail = False
+    source.results = [Candidate(title="Dune", author="F Herbert", cover_url=None)]
+
+    book = library.import_file(_make_pdf(tmp_path / "b.pdf", title="Dune", author="F Herbert"))
+
+    assert book.identified == MatchBasis.TITLE_AUTHOR
+    assert book.lookup is LookupOutcome.IDENTIFIED

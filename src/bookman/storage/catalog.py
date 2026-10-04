@@ -9,17 +9,18 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
 from bookman.errors import CatalogError
-from bookman.models import Book, BookFormat, FormatKind, MatchBasis, ReadIssue
+from bookman.models import Book, BookFormat, FormatKind, LookupOutcome, MatchBasis, ReadIssue
 
 _METADATA_FILENAME = "metadata.json"
-_SCHEMA_VERSION = 5
+_SCHEMA_VERSION = 6
 # Versions whose fields this module understands directly. Version 1 is
 # handled separately, by migration.
-_MODERN_VERSIONS = (2, 3, 4, _SCHEMA_VERSION)
+_MODERN_VERSIONS = (2, 3, 4, 5, _SCHEMA_VERSION)
 
 # Namespace for deriving an id for a pre-version-3 book that has none
 # stored. Deterministic, so repeated reads of an un-upgraded file agree
@@ -35,13 +36,14 @@ _V1_CONFIDENCE_TO_IDENTIFIED = {
 
 
 def save_metadata(book: Book, directory: Path) -> None:
-    """Write a Book's metadata to <directory>/metadata.json (schema version 5).
+    """Write a Book's metadata to <directory>/metadata.json (schema version 6).
 
     Serializes id, title, author, record_author, isbn, identified,
-    grouped, reviewed, and
+    grouped, reviewed, lookup, added (ISO 8601), and
     each format's kind and filename (relative to `directory`, not the
     absolute path stored on `BookFormat.path`) -- plus its `read_issue`
-    when it has one, the key being absent otherwise -- and the cover filename
+    and `sha256` when it has them, the keys being absent otherwise --
+    and the cover filename
     if `book.cover_path` is set. Overwrites any existing metadata.json
     in `directory`, upgrading an older-version file in place. On
     success `book.directory` is set to `directory`.
@@ -74,6 +76,8 @@ def save_metadata(book: Book, directory: Path) -> None:
         "identified": book.identified.value if book.identified else None,
         "grouped": book.grouped.value if book.grouped else None,
         "reviewed": book.reviewed,
+        "lookup": book.lookup.value if book.lookup else None,
+        "added": book.added.isoformat() if book.added else None,
         "formats": [_format_entry(fmt, directory) for fmt in book.formats],
         "cover": _relative_filename(book.cover_path, directory) if book.cover_path else None,
     }
@@ -89,6 +93,9 @@ def _format_entry(fmt: BookFormat, directory: Path) -> dict[str, str]:
     if fmt.read_issue is not None:
         # Added in version 5 (ADR-29); written only when there is one.
         entry["read_issue"] = fmt.read_issue.value
+    if fmt.sha256 is not None:
+        # Added in version 6 (ADR-40); absent for a file placed before it.
+        entry["sha256"] = fmt.sha256
     return entry
 
 
@@ -114,6 +121,10 @@ def load_metadata(directory: Path) -> Book:
     purpose -- one is *derived* from the folder name, so every read of
     an un-upgraded book agrees. It becomes a stored id the next time
     the book is saved, and from then on survives a rename (ADR-17).
+
+    A pre-version-6 file has no `added`, `lookup` or per-format
+    `sha256`: they read as None, except that an identified book's
+    `lookup` reads as IDENTIFIED (ADR-40, ADR-41).
 
     The file on disk is upgraded the next time it is saved.
 
@@ -146,6 +157,7 @@ def load_metadata(directory: Path) -> Book:
                 kind=FormatKind(fmt["kind"]),
                 path=_resolve_filename(fmt["filename"], directory, path),
                 read_issue=ReadIssue(fmt["read_issue"]) if fmt.get("read_issue") else None,
+                sha256=_read_sha256(fmt.get("sha256")),
             )
             for fmt in data["formats"]
         ]
@@ -163,6 +175,8 @@ def load_metadata(directory: Path) -> Book:
             identified=identified,
             grouped=grouped,
             reviewed=reviewed,
+            lookup=_read_lookup(data.get("lookup"), identified),
+            added=_read_added(data.get("added")),
             directory=directory,
         )
     except (KeyError, ValueError, TypeError) as exc:
@@ -191,6 +205,31 @@ def _read_match_fields(data: dict[str, object]) -> _MatchFields:
         MatchBasis(grouped) if grouped is not None else None,
         reviewed,
     )
+
+
+def _read_lookup(stored: object, identified: MatchBasis | None) -> LookupOutcome | None:
+    """The stored lookup outcome; for a file from before version 6, which
+    has none, IDENTIFIED when the book was identified and None (unknown)
+    otherwise (spec lookup_outcome)."""
+    if stored is not None:
+        return LookupOutcome(stored)
+    return LookupOutcome.IDENTIFIED if identified is not None else None
+
+
+def _read_added(stored: object) -> datetime | None:
+    if stored is None:
+        return None
+    if not isinstance(stored, str):
+        raise ValueError(f"added must be an ISO 8601 string, got {stored!r}")
+    return datetime.fromisoformat(stored)
+
+
+def _read_sha256(stored: object) -> str | None:
+    if stored is None:
+        return None
+    if not isinstance(stored, str) or len(stored) != 64:
+        raise ValueError(f"sha256 must be 64 hex digits, got {stored!r}")
+    return stored
 
 
 def _read_id(data: dict[str, object], directory: Path) -> str:

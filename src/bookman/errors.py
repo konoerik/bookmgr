@@ -13,11 +13,12 @@ their parsers and subclass `ParseError`; the Open Library client's
 
 from __future__ import annotations
 
+from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
+    from bookman.config import LibraryLocation
     from bookman.models import Book, MatchBasis
 
 
@@ -99,18 +100,66 @@ class LibraryNotConfiguredError(BookmanError):
     """No library root can be resolved from any source."""
 
 
+class LibraryNotFoundReason(str, Enum):
+    """Why a named library root could not be opened (ADR-43)."""
+
+    MISSING = "missing"
+    """Nothing is there: often a drive that is not connected."""
+
+    NOT_A_DIRECTORY = "not_a_directory"
+    """The root is a file."""
+
+    NOT_A_LIBRARY = "not_a_library"
+    """The root is a folder of other files, not a bookman library."""
+
+
 class LibraryNotFoundError(BookmanError):
     """A library root was named, but there is no library there: the
     folder is missing (often a drive that is not connected), is a file,
     or holds other files and is not a bookman library.
 
+    The message says what happened and the next step in words that suit
+    any frontend; a frontend that offers its own steps (retry, choose
+    another folder) reads `reason` instead of parsing it.
+
     Attributes:
         path: The root that was named.
+        reason: Which of the three it is.
+        location: The root and where it was named (`location.describe()`).
     """
 
-    def __init__(self, path: Path, message: str) -> None:
+    def __init__(
+        self,
+        path: Path,
+        message: str,
+        *,
+        reason: LibraryNotFoundReason | None = None,
+        location: LibraryLocation | None = None,
+    ) -> None:
+        """Args:
+        path: The root that was named.
+        message: What happened and what to do, for a person.
+        reason: Why it could not be opened. Read off the filesystem
+            when omitted.
+        location: Where the root was named. "Passed explicitly" when
+            omitted.
+        """
+        from bookman.config import LibraryLocation, LibraryOrigin
+
         self.path = path
+        self.reason = reason if reason is not None else _reason_for(path)
+        self.location = (
+            location if location is not None else LibraryLocation(path, LibraryOrigin.EXPLICIT)
+        )
         super().__init__(message)
+
+
+def _reason_for(path: Path) -> LibraryNotFoundReason:
+    if not path.exists():
+        return LibraryNotFoundReason.MISSING
+    if not path.is_dir():
+        return LibraryNotFoundReason.NOT_A_DIRECTORY
+    return LibraryNotFoundReason.NOT_A_LIBRARY
 
 
 __all__ = [
@@ -120,6 +169,7 @@ __all__ = [
     "FormatConflictError",
     "LibraryNotConfiguredError",
     "LibraryNotFoundError",
+    "LibraryNotFoundReason",
     "MetadataSourceError",
     "ParseError",
     "UnsupportedFormatError",

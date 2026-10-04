@@ -1,4 +1,5 @@
 import sqlite3
+from dataclasses import replace
 
 import pytest
 
@@ -158,3 +159,58 @@ def test_rebuild_index_repairs_a_hand_edited_library(root):
     catalog.rebuild_index()
 
     assert [b.title for b in catalog.search("harari")] == ["Sapiens"]
+
+
+# --- the index's hashes and stamps (ADR-40) ------------------------------
+
+
+def test_holding_finds_the_book_with_a_hash_and_ignores_others(root):
+    catalog = Catalog(root)
+    book, directory = _new_book(root, "Deep Work")
+    book.formats = [replace(book.formats[0], sha256="ab" * 32)]
+    catalog.put(book, directory)
+
+    found = catalog.holding(["ab" * 32, "cd" * 32])
+
+    assert list(found) == ["ab" * 32]
+    assert [b.id for b in found["ab" * 32]] == [book.id]
+
+
+def test_rows_restate_every_book_and_follow_a_hand_edit(root):
+    import json
+
+    catalog = Catalog(root)
+    book, directory = _new_book(root, "Deep Work", "Cal Newport")
+    catalog.put(book, directory)
+    assert [(r.name, r.title) for r in catalog.rows()] == [("Deep Work", "Deep Work")]
+
+    metadata = directory / "metadata.json"
+    data = json.loads(metadata.read_text())
+    data["title"] = "Deep Work, Edited By Hand"
+    metadata.write_text(json.dumps(data))
+
+    assert [r.title for r in catalog.rows()] == ["Deep Work, Edited By Hand"]
+
+
+def test_rows_drop_a_folder_removed_behind_bookmans_back(root):
+    import shutil
+
+    catalog = Catalog(root)
+    for title in ("Dune", "Emma"):
+        book, directory = _new_book(root, title)
+        catalog.put(book, directory)
+    shutil.rmtree(root / "Dune")
+
+    assert [r.name for r in catalog.rows()] == ["Emma"]
+    assert [b.title for b in catalog.search("")] == ["Emma"]
+
+
+def test_rows_pick_up_a_book_folder_added_behind_bookmans_back(root):
+    from bookman.storage.catalog import save_metadata as save
+
+    catalog = Catalog(root)
+    catalog.rows()  # build the index while the library is empty
+    book, directory = _new_book(root, "Dune")
+    save(book, directory)
+
+    assert [r.name for r in catalog.rows()] == ["Dune"]

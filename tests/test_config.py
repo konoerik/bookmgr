@@ -16,7 +16,7 @@ from bookman.config import (
     resolve_library,
     save_config,
 )
-from bookman.errors import LibraryNotFoundError
+from bookman.errors import LibraryNotFoundError, LibraryNotFoundReason
 from bookman.identify.source import NullSource
 from bookman.library import MARKER_NAME, Library
 
@@ -323,3 +323,45 @@ def test_configured_library_refuses_a_file_even_with_create(saved_root):
 
     with pytest.raises(LibraryNotFoundError, match="not a directory"):
         configured_library(create=True)
+
+
+# --- ADR-43: the reason as data ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("make", "create", "reason"),
+    [
+        (lambda root: None, False, LibraryNotFoundReason.MISSING),
+        (lambda root: root.write_text("x"), True, LibraryNotFoundReason.NOT_A_DIRECTORY),
+        (
+            lambda root: (root.mkdir(), (root / "a.epub").write_bytes(b"x")),
+            False,
+            LibraryNotFoundReason.NOT_A_LIBRARY,
+        ),
+    ],
+)
+def test_library_not_found_carries_its_reason_and_location(saved_root, make, create, reason):
+    make(saved_root)
+
+    with pytest.raises(LibraryNotFoundError) as info:
+        configured_library(create=create)
+
+    assert info.value.reason is reason
+    assert info.value.location.path == saved_root
+    assert info.value.location.origin is LibraryOrigin.CONFIG
+    assert "bookman init" not in str(info.value)
+
+
+def test_library_not_found_built_the_old_way_reads_its_reason_off_the_disk(tmp_path):
+    error = LibraryNotFoundError(tmp_path / "missing", "gone")
+
+    assert error.reason is LibraryNotFoundReason.MISSING
+    assert error.location == LibraryLocation(tmp_path / "missing", LibraryOrigin.EXPLICIT)
+    assert LibraryNotFoundError(tmp_path, "x").reason is LibraryNotFoundReason.NOT_A_LIBRARY
+
+
+def test_configured_library_accepts_a_str(tmp_path, default_source):
+    library = configured_library(str(tmp_path / "Books"), create=True)
+
+    assert library.root == tmp_path / "Books"
+    assert locate_library(str(tmp_path)).path == tmp_path
