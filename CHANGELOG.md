@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-04
+
 For the TUI's import screens: recognizing files already in the library,
 saying why a book has no record, covers a user can fix, and imports that
 stay fast as the library grows.
@@ -290,7 +292,8 @@ ADRs in `docs/ARCHITECTURE.md` refer to them.
   by scanning text (PDF) rather than in a metadata field (EPUB);
   `match_basis` takes a matching `isbn_scraped` keyword.
 
-[Unreleased]: https://github.com/konoerik/bookman/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/konoerik/bookman/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/konoerik/bookman/releases/tag/v1.3.0
 [1.2.0]: https://github.com/konoerik/bookman/releases/tag/v1.2.0
 [1.1.0]: https://github.com/konoerik/bookman/releases/tag/v1.1.0
 [1.0.0]: https://github.com/konoerik/bookman/releases/tag/v1.0.0
