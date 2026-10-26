@@ -4,7 +4,7 @@ Wrap up this session by updating docs/CONTEXT.md and docs/PLAN.md.
 
 2. Based on what we did this session, rewrite docs/CONTEXT.md with:
    - **Current focus:** what is still actively in progress (not done yet)
-   - **Last session:** one concise sentence — what was accomplished and any decisions made
+   - **Last session:** what was accomplished and any decisions made — one to three short sentences, enough that the next session doesn't need the transcript
    - **Blocking:** anything unresolved, waiting on input, or unclear
    - **Next action:** the single most important thing to do next session
 

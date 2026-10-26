@@ -24,13 +24,19 @@ Never auto-load:
 - `.claude/archive/`
 
 ## Behavior Rules
-- For new public functions/modules: write the stub first — signature, the documented contract (expected behavior and failure modes), and a list of named/unimplemented test cases, with no bodies and no implementation. This is a language-agnostic mechanism, not a Python-specific one: what the contract and test-case list actually look like is defined per project in `## Stub` in `docs/CONVENTIONS.md` (e.g. docstring + `Raises` + named pytest functions for exception-based languages, doc comments + returned-error conditions + a table-driven test skeleton for Go, JSDoc + `@throws` for JS) — use that shape, not any other language's, and if this project has no `## Stub` section yet, ask before inventing one. Once the stub is written, pause for review before writing tests or implementation. Skip this for routine one-line fixes and other single-step edits. Critique must come from a fresh context — not the same session that authored the stub — to be worth anything
 - Prefer editing existing files over creating new ones
 - Maintain a `Makefile` at the project root mirroring the commands in CLAUDE.md `## Development Workflow` (`make test`, `make lint`, `make run`, …) — create it if missing, update it whenever those commands change, so anything run in a session can also be triggered manually
 - Do not create `BACKLOG.md`, `TASKS.md`, `TODO.md`, or similar — use `PLAN.md`
 - When making an architectural decision, record it with `/log` before ending the session
 - Keep `PLAN.md ## Active` short — if it exceeds 10 items, triage before adding more
 - Never commit or push without explicit instruction — `/save` and `/prep` are the checkpoints before that happens
+
+### Stub-first
+For a new public function or module, write the stub before anything else: the signature, its documented contract (expected behavior and failure modes), and a list of named, unimplemented test cases, with no bodies. Then pause for review before writing tests or implementation. Routine one-line fixes and other single-step edits skip this.
+
+What the contract and test-case list look like depends on the language, so each project defines the shape in `## Stub` in `docs/CONVENTIONS.md` (for example: a docstring with `Raises` plus named pytest functions; doc comments with returned-error conditions plus a table-driven test skeleton for Go; JSDoc with `@throws` for JS). Use this project's shape, not another language's. If there is no `## Stub` section yet, ask before inventing one.
+
+Critique of a stub should come from a fresh context, not the session that wrote it, because the authoring session tends to confirm its own choices.
 
 ## Add-ons
 <!-- claudify:addons:start -->

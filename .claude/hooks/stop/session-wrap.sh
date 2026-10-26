@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hook: stop/session-wrap.sh
-# Fires at the end of every Claude Code session.
+# Fires each time Claude finishes a response (Stop event), not once per session.
 # 1. Archives completed tasks from docs/PLAN.md ## Done to .claude/archive/YYYY-MM.md
 # 2. Warns if docs/PLAN.md ## Active is getting long
 # 3. Flags docs/CONTEXT.md as stale if /save was not run this session
