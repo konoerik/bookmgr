@@ -385,3 +385,28 @@ What would close them is an edition-rule decision (OQ3), not a parse fix.
 - MIT Press Essential Knowledge: 24 EPUB-only, no incidents.
 - Manning PDF-only titles: no cover (no record cover, no EPUB to fall
   back to — ADR-28's known limit).
+
+## From the TUI
+
+Shapes reported by bookman-tui sessions through `inbox/REQUESTS.md`,
+not seen in a bundle run.
+
+### FN-22 · An agreeing lookup on a reviewed book isn't recorded · observed
+
+Reported 2026-10-06 against 1.3.0 @ `1bdad64`. The TUI's main repair
+path (M10): a book not found online (title "deep_work_newport", no
+author, `lookup` NOT_FOUND) is corrected via `edit`, which sets
+`reviewed`, then looked up again with `reidentify`. The record agrees
+and fills the gaps (author, ISBN, cover), but `identified` stays None and
+`lookup` keeps NOT_FOUND / FAILED: `reidentify` sets `identified` only
+on an unreviewed book, and writes `lookup` only for a non-IDENTIFIED
+outcome (K3, ADR-41). So the book reads "not found online" while showing
+Open Library's cover, and the TUI can't say "matched online by ISBN".
+Un-reviewing first isn't a workaround: the record would overwrite the
+author and ISBN the user typed.
+
+What's wanted: record the basis and outcome of an agreeing lookup on a
+reviewed book while still leaving the human's fields alone. This is
+spec-first (`lookup_outcome`, and what `identified` means once the fields
+didn't all come from the record). It may need a field separate from "the
+fields came from the record".
