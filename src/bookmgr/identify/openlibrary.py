@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 from importlib.metadata import PackageNotFoundError, version
 
-from bookman.identify.source import Candidate, MetadataSourceError
+from bookmgr.identify.source import Candidate, MetadataSourceError
 
 _SEARCH_API_URL = "https://openlibrary.org/search.json"
 _COVER_BY_ID_URL = "https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
@@ -51,7 +51,7 @@ def lookup_by_isbn(isbn: str) -> Candidate | None:
     (work, then author) per hit.
 
     `isbn` is expected to already be a normalized, validated ISBN-13
-    (see bookman.identify.isbn.normalize_isbn) -- this function does
+    (see bookmgr.identify.isbn.normalize_isbn) -- this function does
     not validate it further before querying.
 
     Args:
@@ -84,7 +84,7 @@ def search(title: str, author: str | None = None, *, limit: int = 5) -> list[Can
     asking only for the title, author names, and cover id of each
     document. Results come back in Open Library's own relevance order;
     nothing here judges whether any of them is actually the book --
-    that's `bookman.identify.match.match_basis`'s job.
+    that's `bookmgr.identify.match.match_basis`'s job.
 
     Args:
         title: The title to search for, as parsed from the file.
@@ -155,9 +155,9 @@ def _fetch_bytes(url: str) -> bytes:
 
 def _user_agent() -> str:
     try:
-        return f"bookman/{version('bookman')}"
+        return f"bookmgr/{version('bookmgr')}"
     except PackageNotFoundError:
-        return "bookman/unknown"
+        return "bookmgr/unknown"
 
 
 def _join_names(names: object) -> str | None:

@@ -1,4 +1,4 @@
-"""bookman: local ebook library management.
+"""bookmgr: local ebook library management.
 
 Identifies, catalogs, and organizes EPUB/PDF/MOBI files by title,
 independent of any frontend (a companion TUI consumes this as a library).
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from bookman.config import (
+from bookmgr.config import (
     Config,
     LibraryLocation,
     LibraryOrigin,
@@ -19,8 +19,8 @@ from bookman.config import (
     resolve_library,
     save_config,
 )
-from bookman.errors import (
-    BookmanError,
+from bookmgr.errors import (
+    BookmgrError,
     CatalogError,
     ConfigError,
     FormatConflictError,
@@ -31,17 +31,17 @@ from bookman.errors import (
     ParseError,
     UnsupportedFormatError,
 )
-from bookman.formats import supported_suffixes
-from bookman.formats.epub import BadEpubError
-from bookman.formats.pdf import BadPdfError
-from bookman.identify.openlibrary import OpenLibraryError, OpenLibrarySource
-from bookman.identify.source import Candidate, MetadataSource, NullSource
-from bookman.library import AlreadyInLibrary, ImportBatchResult, ImportEvent, Library, is_library
-from bookman.models import Book, BookFormat, FormatKind, LookupOutcome, MatchBasis, ReadIssue
+from bookmgr.formats import supported_suffixes
+from bookmgr.formats.epub import BadEpubError
+from bookmgr.formats.pdf import BadPdfError
+from bookmgr.identify.openlibrary import OpenLibraryError, OpenLibrarySource
+from bookmgr.identify.source import Candidate, MetadataSource, NullSource
+from bookmgr.library import AlreadyInLibrary, ImportBatchResult, ImportEvent, Library, is_library
+from bookmgr.models import Book, BookFormat, FormatKind, LookupOutcome, MatchBasis, ReadIssue
 
-# Library convention: emit under the "bookman" logger and let the
+# Library convention: emit under the "bookmgr" logger and let the
 # application decide whether anything is shown.
-logging.getLogger("bookman").addHandler(logging.NullHandler())
+logging.getLogger("bookmgr").addHandler(logging.NullHandler())
 
 __all__ = [
     "AlreadyInLibrary",
@@ -49,7 +49,7 @@ __all__ = [
     "BadPdfError",
     "Book",
     "BookFormat",
-    "BookmanError",
+    "BookmgrError",
     "Candidate",
     "CatalogError",
     "Config",

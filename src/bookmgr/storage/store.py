@@ -13,13 +13,13 @@ import logging
 import os
 from pathlib import Path
 
-from bookman.errors import CatalogError
-from bookman.models import Book
-from bookman.storage import index
-from bookman.storage.catalog import load_metadata, save_metadata
+from bookmgr.errors import CatalogError
+from bookmgr.models import Book
+from bookmgr.storage import index
+from bookmgr.storage.catalog import load_metadata, save_metadata
 
-_INDEX_FILENAME = ".bookman-index.sqlite3"
-_log = logging.getLogger("bookman.storage")
+_INDEX_FILENAME = ".bookmgr-index.sqlite3"
+_log = logging.getLogger("bookmgr.storage")
 
 
 class Catalog:
@@ -152,7 +152,7 @@ class Catalog:
         Each index row is checked against its metadata.json's stamp
         (modification time and size). A row that is stale -- the file
         was edited by hand, or a folder was added or removed behind
-        bookman's back -- is re-read from metadata.json and its row
+        bookmgr's back -- is re-read from metadata.json and its row
         rewritten, so the answer is what `all()` would give, at the
         cost of a stat per folder rather than a parse.
 

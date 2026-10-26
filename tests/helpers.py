@@ -10,7 +10,7 @@ from pathlib import Path
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
-from bookman.identify.source import Candidate, MetadataSourceError
+from bookmgr.identify.source import Candidate, MetadataSourceError
 
 VALID_ISBN13 = "9780306406157"
 
@@ -140,7 +140,7 @@ def make_epub(
 
     The bytes depend only on the arguments (every member carries a fixed
     timestamp), so two calls with the same arguments write the same
-    file -- which bookman recognizes as already in the library (spec
+    file -- which bookmgr recognizes as already in the library (spec
     GROUP-0). `filler` adds a member outside the spine, for two files
     that say the same about themselves but are different files."""
 

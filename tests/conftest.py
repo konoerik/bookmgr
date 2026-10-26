@@ -1,7 +1,7 @@
 import pytest
 from helpers import FakeSource
 
-from bookman.library import Library
+from bookmgr.library import Library
 
 
 @pytest.fixture

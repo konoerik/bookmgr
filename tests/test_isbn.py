@@ -1,6 +1,6 @@
 import pytest
 
-from bookman.identify.isbn import extract_isbns, is_valid_isbn, normalize_isbn
+from bookmgr.identify.isbn import extract_isbns, is_valid_isbn, normalize_isbn
 
 VALID_ISBN10 = "0306406152"
 VALID_ISBN10_HYPHENATED = "0-306-40615-2"

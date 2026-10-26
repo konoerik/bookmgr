@@ -1,5 +1,5 @@
 """Library: the orchestration layer tying parsing, identification, and
-storage into an end-to-end import flow. This is bookman's main entry point
+storage into an end-to-end import flow. This is bookmgr's main entry point
 for a consumer (e.g. the companion TUI) once implemented.
 """
 
@@ -18,21 +18,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol, TypeVar, Union
 
-from bookman.errors import (
+from bookmgr.errors import (
     CatalogError,
     FormatConflictError,
     MetadataSourceError,
     UnsupportedFormatError,
 )
-from bookman.formats import is_supported, parser_for
-from bookman.formats.base import ParsedMetadata
-from bookman.formats.epub import extract_cover
-from bookman.identify.isbn import is_valid_isbn, normalize_isbn
-from bookman.identify.match import match_basis
-from bookman.identify.openlibrary import OpenLibrarySource
-from bookman.identify.resolve import Identification, identify
-from bookman.identify.source import MetadataSource
-from bookman.models import (
+from bookmgr.formats import is_supported, parser_for
+from bookmgr.formats.base import ParsedMetadata
+from bookmgr.formats.epub import extract_cover
+from bookmgr.identify.isbn import is_valid_isbn, normalize_isbn
+from bookmgr.identify.match import match_basis
+from bookmgr.identify.openlibrary import OpenLibrarySource
+from bookmgr.identify.resolve import Identification, identify
+from bookmgr.identify.source import MetadataSource
+from bookmgr.models import (
     Book,
     BookFormat,
     FormatKind,
@@ -43,9 +43,9 @@ from bookman.models import (
     stronger_basis,
     weaker_basis,
 )
-from bookman.storage.catalog import save_metadata
-from bookman.storage.index import Row
-from bookman.storage.store import Catalog
+from bookmgr.storage.catalog import save_metadata
+from bookmgr.storage.index import Row
+from bookmgr.storage.store import Catalog
 
 # A colon is the usual title/subtitle separator, so it becomes " -"
 # rather than vanishing ("Deep Work: Rules" -> "Deep Work - Rules", not
@@ -53,12 +53,12 @@ from bookman.storage.store import Catalog
 _DIRNAME_COLON = re.compile(r"\s*:")
 _UNSAFE_DIRNAME_CHARS = re.compile(r'[\\/*?"<>|]')
 _MAX_DIRNAME_LENGTH = 150
-_log = logging.getLogger("bookman.library")
+_log = logging.getLogger("bookmgr.library")
 
 # Written at a library's root when it is created or first opened, so a
 # library can be told from any other folder before it holds a book
 # (ADR-39). `layout` numbers the root's layout for a future migration.
-MARKER_NAME = ".bookman-library.json"
+MARKER_NAME = ".bookmgr-library.json"
 _LAYOUT_VERSION = 1
 
 StrPath = Union[str, "os.PathLike[str]"]
@@ -71,7 +71,7 @@ _IMAGE_SIGNATURES = (b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a"
 
 
 def is_library(path: StrPath) -> bool:
-    """Whether `path` is a bookman library. Read-only: nothing is created.
+    """Whether `path` is a bookmgr library. Read-only: nothing is created.
 
     A library has a marker file at its root, written when it is created
     or first opened. A folder from before the marker existed counts if
@@ -253,7 +253,7 @@ class Library:
            holding it: nothing is parsed, looked up, copied or written.
            `iter_import` reports this as `AlreadyInLibrary`.
         1. Parse `path` with the parser registered for its suffix
-           (bookman.formats: .epub -> parse_epub, .pdf -> parse_pdf).
+           (bookmgr.formats: .epub -> parse_epub, .pdf -> parse_pdf).
         2. Identify it (identify.resolve.identify): look up the file's
            ISBN, or search the metadata source by the file's title/author,
            per `docs/IDENTIFICATION.md` steps IDENT-1..6,
@@ -564,7 +564,7 @@ class Library:
 
         Returns:
             The book holding a format file with the same bytes, loaded
-            fresh, or None. A file placed before bookman recorded hashes
+            fresh, or None. A file placed before bookmgr recorded hashes
             is not found until it is next imported.
 
         Raises:

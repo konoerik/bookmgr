@@ -1,6 +1,6 @@
 """Command-line entry point: exposes Library's actions directly, without a
 separate frontend. Thin by design -- every command is a straight call into
-`bookman.library.Library`; no logic here that a future TUI would need to
+`bookmgr.library.Library`; no logic here that a future TUI would need to
 duplicate.
 """
 
@@ -16,7 +16,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import NoReturn
 
-from bookman.config import (
+from bookmgr.config import (
     ENV_LIBRARY,
     Config,
     config_path,
@@ -25,7 +25,7 @@ from bookman.config import (
     locate_library,
     save_config,
 )
-from bookman.errors import (
+from bookmgr.errors import (
     ConfigError,
     FormatConflictError,
     LibraryNotConfiguredError,
@@ -33,9 +33,9 @@ from bookman.errors import (
     LibraryNotFoundReason,
     UnsupportedFormatError,
 )
-from bookman.formats import is_supported, supported_suffixes
-from bookman.library import AlreadyInLibrary, ImportBatchResult, ImportEvent, Library, is_library
-from bookman.models import Book, MatchBasis, ReadIssue
+from bookmgr.formats import is_supported, supported_suffixes
+from bookmgr.library import AlreadyInLibrary, ImportBatchResult, ImportEvent, Library, is_library
+from bookmgr.models import Book, MatchBasis, ReadIssue
 
 _SUPPORTED = ", ".join(supported_suffixes())
 _RULE_WIDTH = 60
@@ -45,7 +45,7 @@ _OFFLINE_NOTE = (
 _LIBRARY_HELP = f"library root directory (default: ${ENV_LIBRARY}, then the saved config)"
 
 _DESCRIPTION = """\
-bookman - a local ebook library manager.
+bookmgr - a local ebook library manager.
 
 Point it at a folder of EPUB/PDF files and it identifies each book,
 fetches metadata, and files it under a title-named folder in your library.
@@ -53,27 +53,27 @@ fetches metadata, and files it under a title-named folder in your library.
 
 _EPILOG = f"""\
 getting started:
-  bookman init ~/Books
+  bookmgr init ~/Books
       create the library there and remember it; every later command
       uses it unless you pass --library or set ${ENV_LIBRARY}
 
 examples:
-  bookman import ~/Downloads/humble-bundle
+  bookmgr import ~/Downloads/humble-bundle
       import every supported file in that folder
 
-  bookman import book.epub
+  bookmgr import book.epub
       import one file
 
-  bookman list --needs-review
+  bookmgr list --needs-review
       show only books whose match should be checked by hand
 
-  bookman search "newport"
+  bookmgr search "newport"
       find books whose title or author contains "newport"
 
-  bookman config
+  bookmgr config
       show which library is in use and where that setting is stored
 
-run `bookman <command> --help` for the options of one command.
+run `bookmgr <command> --help` for the options of one command.
 """
 
 
@@ -89,7 +89,7 @@ class _Parser(argparse.ArgumentParser):
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Parse arguments and run the requested bookman command.
+    """Parse arguments and run the requested bookmgr command.
 
     Args:
         argv: Argument list to parse, excluding the program name.
@@ -120,7 +120,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_config(args.library)
 
     # An explicit --library may name a new folder for import to fill, as
-    # before ADR-39; a saved or $BOOKMAN_LIBRARY root must already be a
+    # before ADR-39; a saved or $BOOKMGR_LIBRARY root must already be a
     # library, so an unplugged drive is reported, not replaced.
     create = args.command == "import" and args.library is not None
     try:
@@ -154,7 +154,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     `--library/-l` (default: None, meaning "resolve via config") is
     accepted both before and after the subcommand, so
-    `bookman -l ~/books list` and `bookman list -l ~/books` both work.
+    `bookmgr -l ~/books list` and `bookmgr list -l ~/books` both work.
 
     A subparser parses into its own fresh namespace and then copies
     every one of its attributes -- including untouched defaults --
@@ -185,13 +185,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     parser = _Parser(
-        prog="bookman",
+        prog="bookmgr",
         description=_DESCRIPTION,
         epilog=_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=[top_common],
     )
-    parser.add_argument("--version", action="version", version=f"bookman {_version()}")
+    parser.add_argument("--version", action="version", version=f"bookmgr {_version()}")
     subparsers = parser.add_subparsers(dest="command", title="commands", metavar="<command>")
 
     init_parser = subparsers.add_parser(
@@ -276,14 +276,14 @@ def _cmd_init(directory: Path) -> int:
     _header("Library set up")
     print(f"Library: {directory.resolve()}")
     print(f"Config:  {config_path()}")
-    print("every bookman command now uses this library; run `bookman import <dir>` to fill it")
+    print("every bookmgr command now uses this library; run `bookmgr import <dir>` to fill it")
     return 0
 
 
 def _cmd_config(explicit: Path | None) -> int:
     """Run `config`: print the config file location, what it says, and
     which library the current invocation would actually use (after the
-    `--library` flag and `$BOOKMAN_LIBRARY` are taken into account).
+    `--library` flag and `$BOOKMGR_LIBRARY` are taken into account).
 
     Args:
         explicit: The `--library` value, if one was passed.
@@ -293,7 +293,7 @@ def _cmd_config(explicit: Path | None) -> int:
         not treated as a failure, since the point is to see the state.
     """
     path = config_path()
-    _header("bookman configuration")
+    _header("bookmgr configuration")
     print(f"Config file:      {path}" + ("" if path.exists() else " (not created yet)"))
     try:
         saved = load_config(path)
@@ -312,10 +312,10 @@ def _cmd_config(explicit: Path | None) -> int:
         location = locate_library(explicit)
         print(f"Active library:   {location.path.resolve()} ({location.describe()})")
         if not is_library(location.path):
-            state = "missing" if not location.path.exists() else "not a bookman library"
+            state = "missing" if not location.path.exists() else "not a bookmgr library"
             print(f"                  ({state})")
     except (LibraryNotConfiguredError, ValueError):
-        print("Active library:   (none) - run `bookman init <dir>`")
+        print("Active library:   (none) - run `bookmgr init <dir>`")
     return 0
 
 
@@ -406,7 +406,7 @@ def _cmd_list(library: Library, *, needs_review_only: bool) -> int:
     if not books:
         print("no books found")
         if not needs_review_only:
-            print("(add some with `bookman import <file-or-directory>`)")
+            print("(add some with `bookmgr import <file-or-directory>`)")
         return 0
 
     for book in sorted(books, key=lambda b: b.title.lower()):
@@ -449,11 +449,11 @@ def _rule() -> None:
     print("-" * _RULE_WIDTH, flush=True)
 
 
-# ADR-43: bookman's message names a step any frontend can offer; the
-# CLI's way of taking it is `bookman init`.
+# ADR-43: bookmgr's message names a step any frontend can offer; the
+# CLI's way of taking it is `bookmgr init`.
 _INIT_HINTS = {
-    LibraryNotFoundReason.MISSING: " (run `bookman init <dir>`)",
-    LibraryNotFoundReason.NOT_A_LIBRARY: " (run `bookman init <new dir>`)",
+    LibraryNotFoundReason.MISSING: " (run `bookmgr init <dir>`)",
+    LibraryNotFoundReason.NOT_A_LIBRARY: " (run `bookmgr init <new dir>`)",
 }
 
 
@@ -490,7 +490,7 @@ def _print_event(event: ImportEvent, directory: Path) -> None:
 
 
 def _print_read_issue(source: Path, book: Book) -> None:
-    """If bookman could not read inside the file just imported (ADR-29),
+    """If bookmgr could not read inside the file just imported (ADR-29),
     say so under its line, with `ReadIssue.advice` naming the next step --
     and the folder, when that step is to delete it and import again."""
     kind = source.suffix.lower().lstrip(".")
@@ -540,7 +540,7 @@ def _describe(exc: BaseException, path: Path) -> str:
 
 def _version() -> str:
     try:
-        return version("bookman")
+        return version("bookmgr")
     except PackageNotFoundError:
         return "unknown"
 
@@ -579,7 +579,7 @@ def _review_reason(book: Book) -> str | None:
 # Short forms of `ReadIssue` for the one-line `list` output; the full
 # sentence, with the next step, is `ReadIssue.advice`, printed on import.
 _READ_ISSUE_LABELS = {
-    ReadIssue.NEEDS_CRYPTO: "encrypted; needs bookman[crypto]",
+    ReadIssue.NEEDS_CRYPTO: "encrypted; needs bookmgr[crypto]",
     ReadIssue.PASSWORD: "password-protected",
     ReadIssue.UNSUPPORTED_ENCRYPTION: "unsupported encryption",
 }

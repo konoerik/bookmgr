@@ -1,6 +1,6 @@
 """The parser contract and the suffix registry every format plugs into.
 
-Kept apart from `bookman.formats.__init__` so parser modules can import
+Kept apart from `bookmgr.formats.__init__` so parser modules can import
 the contract without a circular import; `__init__` registers the
 built-in parsers and re-exports everything.
 """
@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from bookman.errors import UnsupportedFormatError
-from bookman.models import FormatKind, ReadIssue
+from bookmgr.errors import UnsupportedFormatError
+from bookmgr.models import FormatKind, ReadIssue
 
 
 @dataclass
@@ -30,7 +30,7 @@ class ParsedMetadata:
             more of it before trusting it (see `match_basis`).
         read_issue: Why the file's contents could not be read, or None.
             Set only on a file that is really of its format but closed
-            to bookman (spec PR6); the other fields are then empty.
+            to bookmgr (spec PR6); the other fields are then empty.
     """
 
     title: str | None

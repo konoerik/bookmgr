@@ -9,9 +9,9 @@ from helpers import VALID_ISBN13
 from helpers import make_epub as _make_epub
 from helpers import make_pdf as _make_pdf
 
-from bookman.errors import CatalogError
-from bookman.identify.source import Candidate
-from bookman.models import Book, FormatKind, LookupOutcome, MatchBasis
+from bookmgr.errors import CatalogError
+from bookmgr.identify.source import Candidate
+from bookmgr.models import Book, FormatKind, LookupOutcome, MatchBasis
 
 
 @pytest.fixture

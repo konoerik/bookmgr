@@ -16,7 +16,7 @@ import functools
 import re
 import unicodedata
 
-from bookman.models import MatchBasis
+from bookmgr.models import MatchBasis
 
 _FUZZY_TITLE_THRESHOLD = 0.9
 # Fuzz stays within a word (ADR-30): each aligned word pair must be at

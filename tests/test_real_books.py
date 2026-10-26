@@ -1,6 +1,6 @@
 """Integration tests against real, small public-domain EPUBs (Project
 Gutenberg) checked into tests/fixtures/books/. Unlike the synthetic
-fixtures the other test modules build, these exercise bookman against
+fixtures the other test modules build, these exercise bookmgr against
 real-world EPUB structure and real non-ASCII (Greek, Spanish) text --
 frozen locally, so they're as reproducible as any synthetic fixture.
 
@@ -9,7 +9,7 @@ None of these books carry an ISBN and title search would run for each;
 
 from pathlib import Path
 
-from bookman import Library, NullSource
+from bookmgr import Library, NullSource
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "books"
 

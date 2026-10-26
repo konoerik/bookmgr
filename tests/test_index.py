@@ -2,9 +2,9 @@ import sqlite3
 
 import pytest
 
-from bookman.models import Book, BookFormat, FormatKind, MatchBasis
-from bookman.storage.catalog import save_metadata
-from bookman.storage.index import delete, is_current, rebuild_index, search, upsert
+from bookmgr.models import Book, BookFormat, FormatKind, MatchBasis
+from bookmgr.storage.catalog import save_metadata
+from bookmgr.storage.index import delete, is_current, rebuild_index, search, upsert
 
 
 def _add_book(library_root, title, author, isbn="9780306406157"):

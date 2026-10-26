@@ -5,10 +5,10 @@ from helpers import VALID_ISBN13, FakeSource
 from helpers import make_epub as _make_epub
 from helpers import make_pdf as _make_pdf
 
-from bookman import cli, config
-from bookman.identify.source import Candidate
-from bookman.library import MARKER_NAME, Library
-from bookman.models import Book, BookFormat, FormatKind, MatchBasis, ReadIssue
+from bookmgr import cli, config
+from bookmgr.identify.source import Candidate
+from bookmgr.library import MARKER_NAME, Library
+from bookmgr.models import Book, BookFormat, FormatKind, MatchBasis, ReadIssue
 
 
 @pytest.fixture(autouse=True)
@@ -16,7 +16,7 @@ def _no_real_network(monkeypatch):
     """The CLI builds its own Library, so swap the default source at the
     composition root: every Library made here gets a FakeSource that
     knows nothing. A test that wants a hit re-patches with a scripted one."""
-    monkeypatch.setattr("bookman.library.OpenLibrarySource", FakeSource)
+    monkeypatch.setattr("bookmgr.library.OpenLibrarySource", FakeSource)
 
 
 @pytest.fixture(autouse=True)
@@ -190,7 +190,7 @@ def test_no_command_prints_help_and_succeeds(capsys):
 
     assert code == 0
     out = capsys.readouterr().out
-    assert "usage: bookman" in out
+    assert "usage: bookmgr" in out
     assert "examples:" in out
 
 
@@ -308,7 +308,7 @@ def test_commands_refuse_to_run_with_no_library_configured(capsys):
     assert code == 1
     err = capsys.readouterr().err
     assert "no library configured" in err
-    assert "bookman init" in err
+    assert "bookmgr init" in err
 
 
 def test_init_creates_library_and_saves_it_as_default(tmp_path, config_file, capsys):
@@ -424,7 +424,7 @@ def test_init_replaces_a_malformed_config(tmp_path, config_file):
 def test_import_does_not_look_books_up_when_offline(tmp_path, monkeypatch, capsys):
     hit = Candidate(title="Deep Work", author="Cal Newport", cover_url=None)
     online = FakeSource(record=hit, results=[hit])
-    monkeypatch.setattr("bookman.library.OpenLibrarySource", lambda: online)
+    monkeypatch.setattr("bookmgr.library.OpenLibrarySource", lambda: online)
     library_root = tmp_path / "Books"
     config.save_config(config.Config(library=library_root, offline=True))
     Library(library_root)
@@ -473,7 +473,7 @@ def test_list_refuses_a_folder_that_is_not_a_library(tmp_path, capsys):
     code = cli.main(["--library", str(folder), "list"])
 
     assert code == 1
-    assert "not a bookman library" in capsys.readouterr().err
+    assert "not a bookmgr library" in capsys.readouterr().err
     assert not (folder / MARKER_NAME).exists()
 
 
@@ -503,7 +503,7 @@ def test_config_command_shows_override_sources(tmp_path, monkeypatch, capsys):
     assert cli.main(["config", "-l", str(tmp_path / "Explicit")]) == 0
 
     out = capsys.readouterr().out
-    assert f"$BOOKMAN_LIBRARY: {tmp_path / 'FromEnv'}" in out
+    assert f"$BOOKMGR_LIBRARY: {tmp_path / 'FromEnv'}" in out
     assert f"--library:        {tmp_path / 'Explicit'}" in out
     assert f"Active library:   {(tmp_path / 'Explicit').resolve()}" in out
 
@@ -598,7 +598,7 @@ def test_help_lists_only_the_import_and_inspect_commands(capsys):
     out = capsys.readouterr().out
     for name in ("init", "import", "list", "search", "config"):
         assert name in out
-    for name in ("bookman review", "bookman edit", "bookman reidentify", "  review ", "  edit "):
+    for name in ("bookmgr review", "bookmgr edit", "bookmgr reidentify", "  review ", "  edit "):
         assert name not in out
 
 
@@ -666,7 +666,7 @@ def test_import_names_the_folder_to_delete_when_the_crypto_extra_is_missing(
 ):
     from pypdf.errors import DependencyError
 
-    from bookman.formats import pdf as pdf_module
+    from bookmgr.formats import pdf as pdf_module
 
     def reader_without_backend(path):
         raise DependencyError("cryptography>=3.1 is required for AES algorithm")
@@ -679,7 +679,7 @@ def test_import_names_the_folder_to_delete_when_the_crypto_extra_is_missing(
 
     out = capsys.readouterr().out
     assert code == 0
-    assert "install bookman[crypto], then delete this book's folder" in out
+    assert "install bookmgr[crypto], then delete this book's folder" in out
     assert f"folder: {(library_root / 'Righting Software').resolve()}" in out
 
 
@@ -705,7 +705,7 @@ def test_import_says_what_to_do_when_the_disk_is_full(tmp_path, capsys, monkeypa
     def full_disk(src, dst, *args, **kwargs):
         raise OSError(errno.ENOSPC, "No space left on device", str(dst))
 
-    monkeypatch.setattr("bookman.library.shutil.copyfile", full_disk)
+    monkeypatch.setattr("bookmgr.library.shutil.copyfile", full_disk)
     library_root = tmp_path / "Library"
     source = _make_epub(tmp_path / "TinyML.epub", title="TinyML")
 
@@ -718,7 +718,7 @@ def test_import_says_what_to_do_when_the_disk_is_full(tmp_path, capsys, monkeypa
 
 
 def test_a_missing_saved_library_gets_the_clis_init_hint(tmp_path, config_file, capsys):
-    # ADR-43: bookman's message is frontend-neutral; the CLI adds its step.
+    # ADR-43: bookmgr's message is frontend-neutral; the CLI adds its step.
     config.save_config(config.Config(library=tmp_path / "Unplugged"), config_file)
 
     code = cli.main(["list"])
@@ -726,7 +726,7 @@ def test_a_missing_saved_library_gets_the_clis_init_hint(tmp_path, config_file, 
     err = capsys.readouterr().err
     assert code == 1
     assert "connect it and try again, otherwise choose or create a library" in err
-    assert err.rstrip().endswith("(run `bookman init <dir>`)")
+    assert err.rstrip().endswith("(run `bookmgr init <dir>`)")
 
 
 def test_importing_a_file_already_in_the_library_says_so(tmp_path, capsys):
@@ -746,3 +746,15 @@ def test_importing_a_file_already_in_the_library_says_so(tmp_path, capsys):
     assert "already in library: Deep Work" in single_out
     assert "[1/1] a.epub ... already in library: Deep Work" in batch_out
     assert "0 imported, 0 failed, 1 already in library" in batch_out
+
+
+def test_version_reads_the_installed_distribution(capsys):
+    # The distribution is `bookmgr` (ADR-45); a lookup by the wrong
+    # name falls back to "unknown".
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--version"])
+
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert out.startswith("bookmgr ")
+    assert "unknown" not in out

@@ -6,12 +6,12 @@ from helpers import VALID_ISBN13
 from helpers import make_epub as _make_epub
 from helpers import make_pdf as _make_pdf
 
-from bookman.errors import FormatConflictError, UnsupportedFormatError
-from bookman.formats.epub import BadEpubError
-from bookman.identify.source import Candidate, NullSource
-from bookman.library import MARKER_NAME, ImportBatchResult, Library, _sanitize_dirname, is_library
-from bookman.models import Book, BookFormat, FormatKind, LookupOutcome, MatchBasis, ReadIssue
-from bookman.storage.catalog import save_metadata
+from bookmgr.errors import FormatConflictError, UnsupportedFormatError
+from bookmgr.formats.epub import BadEpubError
+from bookmgr.identify.source import Candidate, NullSource
+from bookmgr.library import MARKER_NAME, ImportBatchResult, Library, _sanitize_dirname, is_library
+from bookmgr.models import Book, BookFormat, FormatKind, LookupOutcome, MatchBasis, ReadIssue
+from bookmgr.storage.catalog import save_metadata
 
 _LONG_PREFIX = (
     "A Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Wor"
@@ -590,7 +590,7 @@ def test_import_file_follow_up_epub_fills_a_missing_cover_but_keeps_an_existing_
 
 
 def _mark_reviewed(library, book, **corrections):
-    from bookman.storage.catalog import save_metadata
+    from bookmgr.storage.catalog import save_metadata
 
     for key, value in corrections.items():
         setattr(book, key, value)
@@ -720,7 +720,7 @@ def test_search_matches_by_title_or_author(tmp_path, library):
 
 def test_search_builds_index_if_missing(tmp_path, library):
     library.import_file(_make_epub(tmp_path / "a.epub", title="Deep Work"))
-    (library.root / ".bookman-index.sqlite3").unlink()
+    (library.root / ".bookmgr-index.sqlite3").unlink()
 
     results = library.search("deep")
 
@@ -1428,7 +1428,7 @@ def _disk_fills_up_after(written: bytes):
 def test_a_failed_copy_leaves_no_half_imported_folder(tmp_path, library, monkeypatch):
     # FN-18: the ENOSPC run left TinyML/TinyML.epub truncated, no metadata.json.
     source = _make_epub(tmp_path / "TinyML.epub", title="TinyML")
-    monkeypatch.setattr("bookman.library.shutil.copyfile", _disk_fills_up_after(b"trunc"))
+    monkeypatch.setattr("bookmgr.library.shutil.copyfile", _disk_fills_up_after(b"trunc"))
 
     with pytest.raises(OSError):
         library.import_file(source)
@@ -1441,7 +1441,7 @@ def test_a_failed_copy_of_a_second_format_leaves_the_book_as_it_was(tmp_path, li
     pdf = _make_pdf(tmp_path / "b.pdf", title="Deep Work", author="Cal Newport")
     book = library.import_file(epub)
     before = sorted(p.name for p in book.directory.iterdir())
-    monkeypatch.setattr("bookman.library.shutil.copyfile", _disk_fills_up_after(b"trunc"))
+    monkeypatch.setattr("bookmgr.library.shutil.copyfile", _disk_fills_up_after(b"trunc"))
 
     with pytest.raises(OSError):
         library.import_file(pdf)
@@ -1458,7 +1458,7 @@ def test_a_failed_reimport_does_not_damage_the_file_already_there(tmp_path, libr
     book = _without_hashes(library.import_file(source))
     placed = book.formats[0].path
     original = placed.read_bytes()
-    monkeypatch.setattr("bookman.library.shutil.copyfile", _disk_fills_up_after(b"trunc"))
+    monkeypatch.setattr("bookmgr.library.shutil.copyfile", _disk_fills_up_after(b"trunc"))
 
     with pytest.raises(OSError):
         library.import_file(source)
@@ -1565,7 +1565,7 @@ def _pairs(events):
 
 
 def test_iter_import_reports_a_file_already_in_the_library(tmp_path, library):
-    from bookman.library import AlreadyInLibrary
+    from bookmgr.library import AlreadyInLibrary
 
     source_dir = tmp_path / "Source"
     source_dir.mkdir()

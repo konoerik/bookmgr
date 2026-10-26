@@ -20,6 +20,6 @@ public-domain reprints have no ISBN.
 
 No real PDF fixture is included: Project Gutenberg doesn't distribute PDFs
 for most texts, and other public-domain PDF sources are typically scanned
-images without a real text layer (unsuitable for bookman's text-based ISBN
+images without a real text layer (unsuitable for bookmgr's text-based ISBN
 scan). PDF coverage stays on the synthetic fixtures in `tests/test_pdf.py`
 and `tests/test_library.py`.

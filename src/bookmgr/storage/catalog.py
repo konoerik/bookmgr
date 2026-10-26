@@ -13,8 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
-from bookman.errors import CatalogError
-from bookman.models import Book, BookFormat, FormatKind, LookupOutcome, MatchBasis, ReadIssue
+from bookmgr.errors import CatalogError
+from bookmgr.models import Book, BookFormat, FormatKind, LookupOutcome, MatchBasis, ReadIssue
 
 _METADATA_FILENAME = "metadata.json"
 _SCHEMA_VERSION = 6
@@ -25,7 +25,7 @@ _MODERN_VERSIONS = (2, 3, 4, 5, _SCHEMA_VERSION)
 # Namespace for deriving an id for a pre-version-3 book that has none
 # stored. Deterministic, so repeated reads of an un-upgraded file agree
 # on the same id instead of minting a new one each time (ADR-17).
-_LEGACY_ID_NAMESPACE = uuid5(NAMESPACE_URL, "https://bookman.local/metadata-id")
+_LEGACY_ID_NAMESPACE = uuid5(NAMESPACE_URL, "https://bookmgr.local/metadata-id")
 
 # Version-1 files had a single `confidence` field; map it onto the split
 # model. "verified" could only have come from an exact-ISBN lookup.

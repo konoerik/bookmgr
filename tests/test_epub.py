@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from helpers import make_epub
 
-from bookman.formats.epub import BadEpubError, extract_cover, parse_epub
+from bookmgr.formats.epub import BadEpubError, extract_cover, parse_epub
 
 CONTAINER_XML = b"""<?xml version="1.0"?>
 <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">

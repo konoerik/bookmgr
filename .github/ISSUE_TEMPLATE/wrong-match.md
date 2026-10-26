@@ -6,7 +6,7 @@ labels: identification
 
 <!-- Fixes are made for patterns, not single files, so the shape of the
      file is what matters. Please fill in what you can; the commands
-     under "What bookman saw" print exactly what is needed. If the shape
+     under "What bookmgr saw" print exactly what is needed. If the shape
      is already in docs/FIELD-NOTES.md, just say which FN-n. -->
 
 **What happened**
@@ -18,13 +18,13 @@ labels: identification
 
 <!-- publisher and bundle, e.g. "No Starch via Humble Bundle, 2025" -->
 
-**What bookman saw**
+**What bookmgr saw**
 
 ```
 # EPUB:
-uv run python -c "from bookman.formats.epub import parse_epub; print(parse_epub('book.epub'))"
+uv run python -c "from bookmgr.formats.epub import parse_epub; print(parse_epub('book.epub'))"
 # PDF:
-uv run python -c "from bookman.formats.pdf import parse_pdf; print(parse_pdf('book.pdf'))"
+uv run python -c "from bookmgr.formats.pdf import parse_pdf; print(parse_pdf('book.pdf'))"
 ```
 
 <!-- paste the output; if a PDF's ISBN was missed, also say which page
@@ -35,6 +35,6 @@ uv run python -c "from bookman.formats.pdf import parse_pdf; print(parse_pdf('bo
 <!-- https://openlibrary.org/isbn/<ISBN>.json for each ISBN above:
      "no record", or the record's title/author and whether it has covers -->
 
-**The `metadata.json` bookman wrote** (optional)
+**The `metadata.json` bookmgr wrote** (optional)
 
-**bookman version**: `bookman --version`
+**bookmgr version**: `bookmgr --version`

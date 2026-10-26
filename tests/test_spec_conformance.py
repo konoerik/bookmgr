@@ -23,9 +23,9 @@ from pathlib import Path
 
 import pytest
 
-from bookman.identify import SPEC_VERSION
-from bookman.identify.match import match_basis
-from bookman.models import MatchBasis
+from bookmgr.identify import SPEC_VERSION
+from bookmgr.identify.match import match_basis
+from bookmgr.models import MatchBasis
 
 _ROOT = Path(__file__).resolve().parent.parent
 _SPEC = _ROOT / "docs" / "IDENTIFICATION.md"

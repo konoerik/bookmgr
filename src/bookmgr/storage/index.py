@@ -21,11 +21,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from bookman.errors import CatalogError
-from bookman.models import Book
-from bookman.storage.catalog import load_metadata
+from bookmgr.errors import CatalogError
+from bookmgr.models import Book
+from bookmgr.storage.catalog import load_metadata
 
-_log = logging.getLogger("bookman.storage")
+_log = logging.getLogger("bookmgr.storage")
 _SCHEMA_VERSION = 3
 _CREATE_TABLES = (
     """

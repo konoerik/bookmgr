@@ -3,14 +3,14 @@ import urllib.error
 
 import pytest
 
-from bookman.identify.openlibrary import (
+from bookmgr.identify.openlibrary import (
     OpenLibraryError,
     OpenLibrarySource,
     fetch_cover,
     lookup_by_isbn,
     search,
 )
-from bookman.identify.source import MetadataSourceError
+from bookmgr.identify.source import MetadataSourceError
 
 ISBN = "9780306406157"
 
@@ -188,13 +188,16 @@ def test_search_raises_open_library_error_on_wrong_shape(monkeypatch):
         search("Anything")
 
 
-def test_requests_identify_bookman_in_the_user_agent(monkeypatch):
+def test_requests_identify_bookmgr_in_the_user_agent(monkeypatch):
     headers.clear()
     _patch_urlopen(monkeypatch, returns=json.dumps({"docs": []}).encode())
 
     search("Deep Work")
 
-    assert headers[0]["User-agent"].startswith("bookman/")
+    assert headers[0]["User-agent"].startswith("bookmgr/")
+    # The version is read from the installed distribution, `bookmgr`
+    # (ADR-45); a lookup by the wrong name falls back to "unknown".
+    assert headers[0]["User-agent"] != "bookmgr/unknown"
 
 
 def test_open_library_error_is_a_metadata_source_error():

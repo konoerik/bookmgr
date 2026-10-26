@@ -2,13 +2,15 @@ name: Release
 
 # Tag a commit on main as v<version> and push the tag:
 #
-#   git tag v1.0.0 && git push origin v1.0.0
+#   git tag v2.0.0 && git push origin v2.0.0
 #
 # This re-runs the checks on the tagged commit, builds the sdist and wheel
-# with uv, and publishes a GitHub Release carrying both, so a consumer can
-# depend on the wheel by URL until the project is on PyPI:
+# with uv, smoke-tests the wheel, publishes both to PyPI, then publishes a
+# GitHub Release carrying them. PyPI goes first: a version uploaded there can
+# never be replaced, so if the upload fails nothing else is released.
 #
-#   uv add "bookman @ https://github.com/konoerik/bookman/releases/download/v1.0.0/bookman-1.0.0-py3-none-any.whl"
+# PyPI uses trusted publishing (no token): the `bookmgr` project trusts this
+# repository's `release.yml` workflow in the `pypi` environment.
 #
 # The tag must match pyproject.toml's version; the build fails otherwise.
 
@@ -17,7 +19,7 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
@@ -41,6 +43,8 @@ jobs:
   build:
     needs: check
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -59,8 +63,41 @@ jobs:
         run: |
           uv venv --python 3.10 /tmp/smoke
           uv pip install --python /tmp/smoke/bin/python dist/*.whl
-          /tmp/smoke/bin/bookman --version
-          /tmp/smoke/bin/python -c "import bookman; print(sorted(bookman.__all__))"
+          /tmp/smoke/bin/bookmgr --version | tee /tmp/smoke/version.txt
+          if grep -q unknown /tmp/smoke/version.txt; then echo "version lookup failed" >&2; exit 1; fi
+          /tmp/smoke/bin/python -c "import bookmgr; print(sorted(bookmgr.__all__))"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/bookmgr/${{ needs.build.outputs.version }}/
+    permissions:
+      id-token: write  # trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: astral-sh/setup-uv@v5
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always dist/*
+
+  github-release:
+    needs: [build, pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -69,8 +106,8 @@ jobs:
             dist/*.tar.gz
           generate_release_notes: false
           body: |
-            See [CHANGELOG.md](https://github.com/konoerik/bookman/blob/${{ github.ref_name }}/CHANGELOG.md) for what changed.
+            See [CHANGELOG.md](https://github.com/konoerik/bookmgr/blob/${{ github.ref_name }}/CHANGELOG.md) for what changed.
 
-            Install the wheel directly:
+            Install from PyPI:
 
-                uv add "bookman @ https://github.com/konoerik/bookman/releases/download/${{ github.ref_name }}/bookman-${{ steps.version.outputs.version }}-py3-none-any.whl"
+                uv add "bookmgr==${{ needs.build.outputs.version }}"

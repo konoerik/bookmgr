@@ -3,9 +3,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from bookman.errors import CatalogError
-from bookman.models import Book, BookFormat, FormatKind, LookupOutcome, MatchBasis, ReadIssue
-from bookman.storage.catalog import load_metadata, save_metadata
+from bookmgr.errors import CatalogError
+from bookmgr.models import Book, BookFormat, FormatKind, LookupOutcome, MatchBasis, ReadIssue
+from bookmgr.storage.catalog import load_metadata, save_metadata
 
 
 def _make_book_dir(tmp_path, **overrides):
@@ -390,7 +390,7 @@ def test_load_metadata_rejects_a_malformed_id(tmp_path, bad):
 
 
 def test_read_issue_round_trips(tmp_path):
-    # ADR-29: why bookman could not read inside a file is kept on the format.
+    # ADR-29: why bookmgr could not read inside a file is kept on the format.
     directory, book = _make_book_dir(tmp_path)
     fmt = book.formats[0]
     book.formats = [BookFormat(kind=fmt.kind, path=fmt.path, read_issue=ReadIssue.NEEDS_CRYPTO)]

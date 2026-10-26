@@ -1,10 +1,10 @@
-"""Every exception bookman raises on purpose, under one base class.
+"""Every exception bookmgr raises on purpose, under one base class.
 
-A frontend can catch `BookmanError` to mean "bookman refused or failed
+A frontend can catch `BookmgrError` to mean "bookmgr refused or failed
 in a way it anticipated" and let anything else (OSError, a bug)
 propagate. The subclasses that also inherit `ValueError` do so for
 compatibility with code that already catches `ValueError` around the
-same calls; the bookman type is the one to catch going forward.
+same calls; the bookmgr type is the one to catch going forward.
 
 Format-specific parse errors (`BadEpubError`, `BadPdfError`) live with
 their parsers and subclass `ParseError`; the Open Library client's
@@ -18,36 +18,36 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from bookman.config import LibraryLocation
-    from bookman.models import Book, MatchBasis
+    from bookmgr.config import LibraryLocation
+    from bookmgr.models import Book, MatchBasis
 
 
-class BookmanError(Exception):
-    """Base class for every exception bookman raises deliberately."""
+class BookmgrError(Exception):
+    """Base class for every exception bookmgr raises deliberately."""
 
 
-class ParseError(BookmanError, ValueError):
+class ParseError(BookmgrError, ValueError):
     """A file could not be read as the format its suffix claims."""
 
 
-class UnsupportedFormatError(BookmanError, ValueError):
+class UnsupportedFormatError(BookmgrError, ValueError):
     """A file's suffix has no registered format parser."""
 
 
-class MetadataSourceError(BookmanError):
+class MetadataSourceError(BookmgrError):
     """A metadata source could not answer: network failure, non-2xx
     response, or a response it could not parse. `identify` treats it as
     "no record"; it never escapes `Library`."""
 
 
-class CatalogError(BookmanError, ValueError):
+class CatalogError(BookmgrError, ValueError):
     """A book's metadata.json is unreadable, inconsistent, or unsafe
     (invalid JSON, a missing field, an unknown enum value or schema
     version, a filename that escapes the book's folder), or a Book was
     asked to be saved somewhere it cannot go."""
 
 
-class FormatConflictError(BookmanError):
+class FormatConflictError(BookmgrError):
     """A file was refused because the book it belongs to already holds a
     different file of the same format kind (spec GROUP-4, ADR-21).
 
@@ -92,11 +92,11 @@ class FormatConflictError(BookmanError):
         )
 
 
-class ConfigError(BookmanError, ValueError):
+class ConfigError(BookmgrError, ValueError):
     """The user config file exists but is not valid."""
 
 
-class LibraryNotConfiguredError(BookmanError):
+class LibraryNotConfiguredError(BookmgrError):
     """No library root can be resolved from any source."""
 
 
@@ -110,13 +110,13 @@ class LibraryNotFoundReason(str, Enum):
     """The root is a file."""
 
     NOT_A_LIBRARY = "not_a_library"
-    """The root is a folder of other files, not a bookman library."""
+    """The root is a folder of other files, not a bookmgr library."""
 
 
-class LibraryNotFoundError(BookmanError):
+class LibraryNotFoundError(BookmgrError):
     """A library root was named, but there is no library there: the
     folder is missing (often a drive that is not connected), is a file,
-    or holds other files and is not a bookman library.
+    or holds other files and is not a bookmgr library.
 
     The message says what happened and the next step in words that suit
     any frontend; a frontend that offers its own steps (retry, choose
@@ -144,7 +144,7 @@ class LibraryNotFoundError(BookmanError):
         location: Where the root was named. "Passed explicitly" when
             omitted.
         """
-        from bookman.config import LibraryLocation, LibraryOrigin
+        from bookmgr.config import LibraryLocation, LibraryOrigin
 
         self.path = path
         self.reason = reason if reason is not None else _reason_for(path)
@@ -163,7 +163,7 @@ def _reason_for(path: Path) -> LibraryNotFoundReason:
 
 
 __all__ = [
-    "BookmanError",
+    "BookmgrError",
     "CatalogError",
     "ConfigError",
     "FormatConflictError",

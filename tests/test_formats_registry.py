@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from bookman import supported_suffixes
-from bookman.errors import UnsupportedFormatError
-from bookman.formats import FormatParser, ParsedMetadata, is_supported, parser_for, register
-from bookman.formats.base import _REGISTRY
-from bookman.formats.epub import parse_epub
-from bookman.formats.pdf import parse_pdf
-from bookman.models import FormatKind
+from bookmgr import supported_suffixes
+from bookmgr.errors import UnsupportedFormatError
+from bookmgr.formats import FormatParser, ParsedMetadata, is_supported, parser_for, register
+from bookmgr.formats.base import _REGISTRY
+from bookmgr.formats.epub import parse_epub
+from bookmgr.formats.pdf import parse_pdf
+from bookmgr.models import FormatKind
 
 
 def test_built_in_parsers_are_registered_on_import():
@@ -32,7 +32,7 @@ def test_unregistered_suffix_is_unsupported():
 
 
 def test_a_new_format_is_one_register_call(monkeypatch):
-    monkeypatch.setattr("bookman.formats.base._REGISTRY", dict(_REGISTRY))
+    monkeypatch.setattr("bookmgr.formats.base._REGISTRY", dict(_REGISTRY))
 
     def parse_mobi(path: Path) -> ParsedMetadata:
         return ParsedMetadata(title="from mobi", author=None)

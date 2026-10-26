@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from bookman.errors import MetadataSourceError
+from bookmgr.errors import MetadataSourceError
 
 
 @dataclass

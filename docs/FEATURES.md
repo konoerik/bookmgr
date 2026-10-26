@@ -20,7 +20,7 @@ PLAN.md; the v1.0 boundary is below.
 
 # v1.0 scope
 
-bookman v1.0 delivers **one workflow**: point it at a folder of
+bookmgr v1.0 delivers **one workflow**: point it at a folder of
 purchased ebook files, have each identified, have the formats of one
 book grouped into one folder, have volumes and editions kept apart, and
 let a human fix whatever the automation got wrong. Everything that is
@@ -280,8 +280,8 @@ The **Parse** stage and the batch around it — outside
 | H10 | Bundle with per-book subfolders (Humble layout) | `recursive=True` walks them | ✅ | `test_library::import_directory_ignores_subdirectories_unless_recursive` |
 | H11 | Empty metadata, informative filename (`deep_work_newport.epub`) | Something usable | ❌ | Title becomes the raw stem, no lookup succeeds, folder is `deep_work_newport`. No filename heuristics exist |
 | H12 | Non-book PDFs in a bundle (receipts, "README.pdf", sample chapters) | Cataloged as `needs_review` — a human filters them | ❓ | Currently cataloged like any PDF. No size/page heuristics, and none planned: guessing "is this a book" is a classifier, and the review queue already exists for exactly this |
-| H13 | Any other document format (DOCX, TXT, RTF, CBZ/CBR, AZW) | Not parsed; reported as skipped like any unregistered suffix | 🚫 | bookman manages **ebooks** — EPUB and PDF, with MOBI recognized but unparsed (ADR-2, L11) — not documents. See ROADMAP *Out of Scope*. `FormatParser`'s registry makes adding one easy, which is precisely why the boundary is written down |
-| H14 | PDF encrypted in a way bookman cannot open: AES without a crypto backend, a DRM security handler, a null `/Encrypt` (FIELD-NOTES FN-12, FN-20) | Imported on its filename, reason kept on the format, `advice` names the next step; AES with an empty password reads normally with `bookman[crypto]` | ✅ | ADR-29. `test_pdf::reads_an_aes_pdf_with_an_empty_password`, `reports_a_missing_crypto_backend…`, `reports_a_null_encrypt_entry…`, `reports_a_drm_security_handler…`; `test_library::an_unreadable_pdf_in_a_batch_is_imported_not_failed`, `the_read_issue_stays_on_the_unreadable_format_only`; `test_catalog::read_issue_round_trips`; `test_cli::import_explains_a_pdf_it_could_not_read…`, `…folder_to_delete_when_the_crypto_extra_is_missing`, `list_says_why_an_unreadable_book_needs_review`. Before: 19 of 211 PDFs in the Calibre run failed to import |
+| H13 | Any other document format (DOCX, TXT, RTF, CBZ/CBR, AZW) | Not parsed; reported as skipped like any unregistered suffix | 🚫 | bookmgr manages **ebooks** — EPUB and PDF, with MOBI recognized but unparsed (ADR-2, L11) — not documents. See ROADMAP *Out of Scope*. `FormatParser`'s registry makes adding one easy, which is precisely why the boundary is written down |
+| H14 | PDF encrypted in a way bookmgr cannot open: AES without a crypto backend, a DRM security handler, a null `/Encrypt` (FIELD-NOTES FN-12, FN-20) | Imported on its filename, reason kept on the format, `advice` names the next step; AES with an empty password reads normally with `bookmgr[crypto]` | ✅ | ADR-29. `test_pdf::reads_an_aes_pdf_with_an_empty_password`, `reports_a_missing_crypto_backend…`, `reports_a_null_encrypt_entry…`, `reports_a_drm_security_handler…`; `test_library::an_unreadable_pdf_in_a_batch_is_imported_not_failed`, `the_read_issue_stays_on_the_unreadable_format_only`; `test_catalog::read_issue_round_trips`; `test_cli::import_explains_a_pdf_it_could_not_read…`, `…folder_to_delete_when_the_crypto_extra_is_missing`, `list_says_why_an_unreadable_book_needs_review`. Before: 19 of 211 PDFs in the Calibre run failed to import |
 
 ## Gap summary (what to fix, roughly by damage)
 
@@ -330,7 +330,7 @@ remain.
 
 # Part II — Organization and operations
 
-What a frontend needs from `bookman` to be a usable library manager, not
+What a frontend needs from `bookmgr` to be a usable library manager, not
 just an importer. "Frontend" means the companion TUI first, the bundled
 CLI second, any embedder third. Rows are capabilities; the *Public API*
 column is the contract a frontend would call.
@@ -339,7 +339,7 @@ column is the contract a frontend would call.
 
 | Mark | Meaning |
 |---|---|
-| ✅ exists | In the public API (`bookman.__all__`) and tested. |
+| ✅ exists | In the public API (`bookmgr.__all__`) and tested. |
 | 🔶 partial | Exists internally, or exists with a gap a frontend would hit. |
 | ❌ missing | Nothing provides it. |
 | 🚫 out of scope | Excluded by ROADMAP / an ADR; listed so it isn't re-proposed. |
@@ -347,7 +347,7 @@ column is the contract a frontend would call.
 
 Baseline today: `Library.import_file`, `import_directory`, `scan`,
 `search`; `Book` with 9 fields; `metadata.json` v2; a sqlite index over
-title/author/isbn/needs_review; `bookman.config` (ADR-8).
+title/author/isbn/needs_review; `bookmgr.config` (ADR-8).
 
 ## I. Catalog schema — what a `Book` records
 
@@ -379,7 +379,7 @@ title/author/isbn/needs_review; `bookman.config` (ADR-8).
 | J4 | Filter: needs review / by format / by evidence basis / has cover | Review queue, "PDF-only books" | ❌ | Index already stores `needs_review`; frontend can filter `scan()` in memory today |
 | J5 | Sort: title, author, added date | Any list view | ✅ | Frontend sorts `scan()`; `Book.added` since ADR-40 (None for books from before it) |
 | J6 | Field-scoped search (`author:`, `isbn:`) and ranking | Precision on large libraries | ❌ | Index is one `LIKE` over title OR author |
-| J7 | Counts / summary (total, needs review, by format) | Status bar, `bookman config`-style overview | ❌ | Trivial over `scan()`; worth one call so every frontend agrees |
+| J7 | Counts / summary (total, needs review, by format) | Status bar, `bookmgr config`-style overview | ❌ | Trivial over `scan()`; worth one call so every frontend agrees |
 | J8 | Author / series browse (distinct values) | Navigation | ❌ | Blocked on I14 / I6 |
 | J9 | Performance at scale (hundreds to low thousands of books) | TUI responsiveness | 🔶 | `scan()` reads every JSON file per call. `import_file` no longer does (2026-10-04): grouping reads the index's rows, checked against each metadata.json's mtime and size, and title/author normalization is cached. Offline import at ~2000 books went from ~0.17 s to ~0.05 s per file (the TUI's mock-library report); what remains grows with the library because GROUP-2 runs MATCH against every book |
 | J10 | Change detection / cache invalidation | TUI knows to refresh after an import | ❌ | No version stamp or mtime exposed; frontends re-`scan()` |
@@ -409,7 +409,7 @@ built yet: the review flag exists, the way to act on it doesn't.
 | ID | Operation | Why | Status | Public API / notes |
 |---|---|---|---|---|
 | L1 | Import one file / a directory (optionally recursive) | Core | ✅ | `import_file`, `import_directory(recursive=)`, `iter_import(recursive=)` |
-| L2 | Batch result reporting: imported / failed / skipped / conflicts | Tell the user what happened | ✅ | `ImportBatchResult`, exported from `bookman.__init__`; pinned by `test_public_api::batch_result_is_exported_from_the_package_root`. `ImportBatchResult.record(event)` is the one classification, shared by `import_directory` and a frontend that streams (ADR-25) |
+| L2 | Batch result reporting: imported / failed / skipped / conflicts | Tell the user what happened | ✅ | `ImportBatchResult`, exported from `bookmgr.__init__`; pinned by `test_public_api::batch_result_is_exported_from_the_package_root`. `ImportBatchResult.record(event)` is the one classification, shared by `import_directory` and a frontend that streams (ADR-25) |
 | L3 | Progress / streaming results | TUI progress bar on a 40-book bundle with network per book | ✅ | ADR-25: `Library.iter_import` yields an `ImportEvent(path, index, total, outcome)` before each attempted file (outcome None: "waiting on this one") and after it (`Book` / `FormatConflictError` / other exception); an unsupported file yields once with `UnsupportedFormatError`. `import_directory` collects the same events. `test_library::iter_import_*`, `batch_result_record_reproduces_import_directory`; the CLI prints `[i/n] name ... imported: …` as each file finishes, `test_cli::import_directory_prints_each_file_as_it_finishes` |
 | L4 | Cancel an in-progress batch | TUI responsiveness | ✅ | Stop iterating `iter_import`; files already imported stay, nothing else is touched (ADR-25). No test beyond the generator's nature — there is no state to clean up |
 | L5 | Dry run / preview: "here is what would happen" | Confidence before touching the library | ❌ | Needs identify + `_find_book` without the copy/save step |
@@ -417,7 +417,7 @@ built yet: the review flag exists, the way to act on it doesn't.
 | L7 | Copy vs. move source files | Users who want the bundle folder gone | 🔶 💬 | Copy only (G10); a `move=` flag is cheap but changes the safety story |
 | L8 | Adopt files dropped into the library folder by hand | Users who manage some folders manually | ❌ | `scan()` skips folders without metadata.json |
 | L9 | Offline mode / no-network import | Airplane, rate limits, privacy | ✅ | `Config.offline`, applied by `configured_library` (ADR-38); the CLI shows it but has no switch for it, so a user edits `config.json` |
-| L10 | Exceptions a frontend can catch by name | Distinguish "bad file" from "disk full" | ✅ | All nine live under `BookmanError` and are exported from `bookman.__init__`; `test_errors` pins the hierarchy and that every exported error is a `BookmanError` |
+| L10 | Exceptions a frontend can catch by name | Distinguish "bad file" from "disk full" | ✅ | All nine live under `BookmgrError` and are exported from `bookmgr.__init__`; `test_errors` pins the hierarchy and that every exported error is a `BookmgrError` |
 | L11 | MOBI / AZW3 parsing | Bundles ship them | ❌ | **Deprioritized below v1.0** (2026-09-18). MOBI is Mobipocket, Amazon-only since 2005, and Amazon itself moved off it — Send to Kindle stopped accepting MOBI in 2022; current Kindles use AZW3/KFX. It is also the most expensive format work available: ADR-2 notes there is no clean pure-Python parsing story, and ADR-3's dependency policy rules out leaning on a library. Meanwhile H6 already degrades gracefully. Revisit if a real bundle ships MOBI-only titles |
 | L12 | Bundle-level hints (Humble page title list) | Bias matching for a known batch | 🚫 | ROADMAP Ideas — deferred, not planned |
 
@@ -425,13 +425,13 @@ built yet: the review flag exists, the way to act on it doesn't.
 
 | ID | Operation | Why | Status | Public API / notes |
 |---|---|---|---|---|
-| M1 | Rebuild the search index | Recover from corruption, after manual edits | ✅ | `Library.scan()` refreshes the index from every metadata.json it reads (ADR-12 amendment, 2026-09-19), so `bookman list` is the rebuild; `search` also rebuilds a missing or old-layout index. `test_library::scan_brings_search_in_step_with_a_hand_edited_metadata_json`. No separate command (ADR-24) |
+| M1 | Rebuild the search index | Recover from corruption, after manual edits | ✅ | `Library.scan()` refreshes the index from every metadata.json it reads (ADR-12 amendment, 2026-09-19), so `bookmgr list` is the rebuild; `search` also rebuilds a missing or old-layout index. `test_library::scan_brings_search_in_step_with_a_hand_edited_metadata_json`. No separate command (ADR-24) |
 | M2 | Verify: metadata.json vs. disk (missing format files, orphan files, missing cover, unreadable JSON) | Trust the catalog | ❌ | `scan()` silently skips unreadable metadata.json — a frontend can't tell "empty" from "broken". Also the repair path for ADR-18's one failure window: a title edit interrupted partway through its inner file renames |
 | M3 | Repair: re-link or drop missing formats, adopt orphans | Fix what M2 finds | ❌ | |
 | M4 | Export catalog (JSON / CSV) | Backup, spreadsheets, other tools | ❌ | Cheap over `scan()` |
 | M5 | Relocate the library | Move to a new disk/path | 🔶 | `save_config` repoints; paths in metadata.json are relative so folders can be moved, but nothing verifies afterwards (M2) |
 | M6 | Single-writer assumption documented / enforced | Two TUI instances or TUI + CLI at once | ✅ | **Documented** 2026-09-19, in the README ("As a library") and the `Library` class docstring: one writer per root, reads are safe alongside it, concurrent imports can race on a folder and the last `metadata.json` wins. Not enforced — no lock file; deliberately, for v1.0 (a personal tool with one user at a keyboard). Enforcement would be post-1.0 |
-| M7 | Library-level metadata (schema version, created, book count) | Detect an old library, show an overview | 🔶 | `.bookman-library.json` at the root marks a library and holds a layout version (ADR-39); `is_library(path)`. No created date or book count |
+| M7 | Library-level metadata (schema version, created, book count) | Detect an old library, show an overview | 🔶 | `.bookmgr-library.json` at the root marks a library and holds a layout version (ADR-39); `is_library(path)`. No created date or book count |
 
 ## N. Frontend contract
 

@@ -4,7 +4,7 @@
 <!-- Current sprint items. Keep this short — 5-10 items max.
      If it grows beyond that, move lower-priority items to Backlog. -->
 
-v1.1.0 is released. Post-1.1 work, in this order:
+v2.0.0 (`bookmgr`, first on PyPI) is released. Next, in this order:
 
 - **Decide OQ3 editions against the Calibre data** — 8 of the 12
   remaining splits have an edition marker on one side only (C7's accepted
@@ -53,6 +53,7 @@ v1.1.0 is released. Post-1.1 work, in this order:
 ## Done
 <!-- Completed items land here temporarily.
      The stop hook archives these to .claude/archive/YYYY-MM.md and clears this section. -->
+- **v2.0.0: renamed `bookmgr`, first PyPI release** (2026-10-26, ADR-45): PyPI's `bookman` is an unrelated bookmarks tool that also ships `bookman-gui`, so the whole project was renamed (package, import, CLI, env vars, on-disk names, repos `konoerik/bookmgr` and `bookmgr-tui`); ADR-44 (`bookman-core`) superseded before release. No migration (sole user). `release.yml` publishes to PyPI by trusted publishing (environment `pypi`) before the GitHub Release.
 - **TUI inbox triage** (2026-10-20): five requests against 1.3.0 → FN-22 (reviewed book's agreeing lookup not recorded) and four Backlog items (import a file set, remove a book, lookup candidates, unreadable books); the PyPI name clash led to ADR-44/45.
 - **TUI import requests** (2026-10-04, PLAN items + third inbox round): GROUP-0 already-in-library check by per-format SHA-256 (`AlreadyInLibrary`, `ImportBatchResult.unchanged`, `find_file`/`find_files`), `Book.added`, metadata.json v6, index schema 3 (ADR-40); `Book.lookup`/`LookupOutcome` and the spec's `lookup_outcome` block, plus a `reidentify` downgrade fix (ADR-41); `set_cover` + `reidentify(replace_cover=True)` (ADR-42); `ReadIssue.summary`; `LibraryNotFoundError.reason`/`.location`, CLI-free messages, `str` paths (ADR-43). Import at ~2000 books ~0.17 → ~0.05 s/file: grouping reads index rows checked against each metadata.json's mtime+size, plus cached normalization. spec_version 7, 662 tests. Inbox entries deleted.
 - **Library marker, open-without-create, root origin** (2026-09-27, TUI SETUP-5/START-5): `.bookman-library.json` + `is_library`, `configured_library(create=False)` raising `LibraryNotFoundError`, `locate_library`/`LibraryLocation`/`LibraryOrigin` (ADR-39). CLI list/search/import refuse a missing or non-library root. 593 tests.

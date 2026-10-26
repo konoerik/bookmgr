@@ -16,19 +16,19 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import TypeVar
 
-from bookman.formats.base import ParsedMetadata
-from bookman.identify.match import (
+from bookmgr.formats.base import ParsedMetadata
+from bookmgr.identify.match import (
     is_file_name_title,
     is_usable_author,
     is_usable_title,
     match_basis,
 )
-from bookman.identify.source import Candidate, MetadataSource, MetadataSourceError, NullSource
-from bookman.models import LookupOutcome, MatchBasis, stronger_basis
+from bookmgr.identify.source import Candidate, MetadataSource, MetadataSourceError, NullSource
+from bookmgr.models import LookupOutcome, MatchBasis, stronger_basis
 
 T = TypeVar("T")
 _TRAILING_BRACKETS = re.compile(r"\s*[(\[][^()\[\]]*[)\]]\s*$")
-_log = logging.getLogger("bookman.identify")
+_log = logging.getLogger("bookmgr.identify")
 
 
 @dataclass

@@ -1,10 +1,10 @@
 import pytest
 from helpers import FakeSource
 
-from bookman.formats import ParsedMetadata
-from bookman.identify.resolve import identify
-from bookman.identify.source import Candidate, NullSource
-from bookman.models import LookupOutcome, MatchBasis
+from bookmgr.formats import ParsedMetadata
+from bookmgr.identify.resolve import identify
+from bookmgr.identify.source import Candidate, NullSource
+from bookmgr.models import LookupOutcome, MatchBasis
 
 ISBN = "9780306406157"
 DEEP_WORK = Candidate(title="Deep Work", author="Cal Newport", cover_url="dw.jpg")

@@ -1,7 +1,7 @@
 ---
 name: matching
 description: >-
-  Load bookman's book-identification spec before touching how books are
+  Load bookmgr's book-identification spec before touching how books are
   identified, matched, or grouped. Use when the work involves match_basis,
   title normalization, author agreement, ISBN acceptance or provenance,
   Open Library candidate selection, grouping a file into an existing book
@@ -18,7 +18,7 @@ description: >-
 stages and the match rule they share. **Read it before proposing or
 reviewing a change to any of them.**
 
-It is written from the ADRs, never from `src/`. So it states what bookman
+It is written from the ADRs, never from `src/`. So it states what bookmgr
 *should* do, which may differ from what it does. That is the point — a spec
 transcribed from the code could only ever agree with the code.
 

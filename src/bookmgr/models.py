@@ -10,7 +10,7 @@ from uuid import uuid4
 
 
 class FormatKind(str, Enum):
-    """Ebook file formats bookman can catalog."""
+    """Ebook file formats bookmgr can catalog."""
 
     EPUB = "epub"
     PDF = "pdf"
@@ -36,7 +36,7 @@ class MatchBasis(str, Enum):
 
 
 class LookupOutcome(str, Enum):
-    """What happened when bookman looked a book up (spec `lookup_outcome`,
+    """What happened when bookmgr looked a book up (spec `lookup_outcome`,
     ADR-41). `Book.identified` says how a record was matched; this says
     what happened when none was, so a frontend can explain an
     unidentified book and retry exactly the ones whose lookup failed.
@@ -58,10 +58,10 @@ class LookupOutcome(str, Enum):
 
 
 class ReadIssue(str, Enum):
-    """Why bookman could not read inside a file it still imported.
+    """Why bookmgr could not read inside a file it still imported.
 
     Such a file is really of its format -- intact, and a book the user
-    bought -- but its contents are closed to bookman, so it was
+    bought -- but its contents are closed to bookmgr, so it was
     cataloged on its filename alone (spec PR6, ADR-29). Recorded on the
     `BookFormat`, not the `Book`: a book whose other format was readable
     is not the worse for it. `advice` is the sentence to show the user;
@@ -69,13 +69,13 @@ class ReadIssue(str, Enum):
     """
 
     NEEDS_CRYPTO = "needs_crypto"
-    """Encrypted with AES, and bookman's optional crypto support is not installed."""
+    """Encrypted with AES, and bookmgr's optional crypto support is not installed."""
 
     PASSWORD = "password"
     """Protected by a password, and an empty one does not open it."""
 
     UNSUPPORTED_ENCRYPTION = "unsupported_encryption"
-    """Declares encryption bookman cannot handle: a DRM security handler,
+    """Declares encryption bookmgr cannot handle: a DRM security handler,
     or an encryption entry too damaged to read."""
 
     @property
@@ -93,24 +93,24 @@ class ReadIssue(str, Enum):
 
 _READ_ISSUE_ADVICE = {
     ReadIssue.NEEDS_CRYPTO: (
-        "the file is encrypted and bookman's optional crypto support is not installed, "
-        "so bookman named the book after the file; install bookman[crypto], then delete "
+        "the file is encrypted and bookmgr's optional crypto support is not installed, "
+        "so bookmgr named the book after the file; install bookmgr[crypto], then delete "
         "this book's folder and import the file again to read its title, author and ISBN"
     ),
     ReadIssue.PASSWORD: (
-        "the file is protected by a password, so bookman named the book after the file; "
+        "the file is protected by a password, so bookmgr named the book after the file; "
         "check its title and author, and correct them by hand if needed"
     ),
     ReadIssue.UNSUPPORTED_ENCRYPTION: (
-        "the file uses encryption bookman cannot read (DRM, or a damaged encryption entry), "
-        "so bookman named the book after the file; check its title and author, "
+        "the file uses encryption bookmgr cannot read (DRM, or a damaged encryption entry), "
+        "so bookmgr named the book after the file; check its title and author, "
         "and correct them by hand if needed"
     ),
 }
 
 
 _READ_ISSUE_SUMMARY = {
-    ReadIssue.NEEDS_CRYPTO: "Encrypted; needs bookman[crypto]",
+    ReadIssue.NEEDS_CRYPTO: "Encrypted; needs bookmgr[crypto]",
     ReadIssue.PASSWORD: "Password-protected",
     ReadIssue.UNSUPPORTED_ENCRYPTION: "Unsupported encryption (DRM)",
 }
@@ -150,13 +150,13 @@ class BookFormat:
     Attributes:
         kind: The file's format.
         path: Where the file is, inside the book's folder.
-        read_issue: Why bookman could not read inside this file, or None
+        read_issue: Why bookmgr could not read inside this file, or None
             if it could. The book was named after the file, so a
             later, readable import of the same file is a different book
-            to bookman: the way back is to delete the folder and import
+            to bookmgr: the way back is to delete the folder and import
             again, which is what `ReadIssue.advice` says.
-        sha256: The hex SHA-256 of the file's bytes as bookman placed
-            them, or None for a file placed before bookman recorded
+        sha256: The hex SHA-256 of the file's bytes as bookmgr placed
+            them, or None for a file placed before bookmgr recorded
             hashes. How a file already in the library is recognized
             (spec GROUP-0, ADR-40).
     """
@@ -201,13 +201,13 @@ class Book:
             title/author/isbn/cover/identified. A TITLE_ONLY grouping
             into a reviewed book clears the flag, since the book's
             contents changed in a way that deserves another look.
-        lookup: What happened when bookman looked the book up: IDENTIFIED
+        lookup: What happened when bookmgr looked the book up: IDENTIFIED
             exactly when `identified` is set; otherwise NO_MATCH, FAILED
             (worth a `reidentify`) or NOT_ATTEMPTED (offline). None for
-            an unidentified book cataloged before bookman recorded it
+            an unidentified book cataloged before bookmgr recorded it
             (ADR-41).
         added: When an import created this book, timezone-aware UTC.
-            None for a book cataloged before bookman recorded it.
+            None for a book cataloged before bookmgr recorded it.
         directory: The book's folder in the managed library -- where
             it lives, and its display name. None until the book has
             been persisted; set by every operation that reads or

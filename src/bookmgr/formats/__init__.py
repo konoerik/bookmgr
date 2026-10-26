@@ -7,7 +7,7 @@ call here.
 
 from __future__ import annotations
 
-from bookman.formats.base import (
+from bookmgr.formats.base import (
     FormatParser,
     ParsedMetadata,
     is_supported,
@@ -15,9 +15,9 @@ from bookman.formats.base import (
     register,
     supported_suffixes,
 )
-from bookman.formats.epub import parse_epub
-from bookman.formats.pdf import parse_pdf
-from bookman.models import FormatKind
+from bookmgr.formats.epub import parse_epub
+from bookmgr.formats.pdf import parse_pdf
+from bookmgr.models import FormatKind
 
 register(".epub", FormatKind.EPUB, parse_epub)
 register(".pdf", FormatKind.PDF, parse_pdf)

@@ -2,11 +2,11 @@
 
 ## Quick Reference
 **Stack:** Python 3.10+, uv, pytest, ruff, mypy (strict)
-**Entry point:** `src/bookman/__init__.py` (exports `Library`, `Book`, `BookFormat`, `FormatKind`, `MatchBasis`, `UnsupportedFormatError`; the lookup seam `MetadataSource`, `Candidate`, `MetadataSourceError`, `OpenLibrarySource`, `NullSource`; every error type under `BookmanError` (`ParseError`/`BadEpubError`/`BadPdfError`, `UnsupportedFormatError`, `MetadataSourceError`/`OpenLibraryError`, `CatalogError`, `ConfigError`, `LibraryNotConfiguredError`); `supported_suffixes`; and the config API: `Config`, `config_path`, `load_config`, `save_config`, `resolve_library`)
-**Key paths:** `src/bookman/library.py` (Library: import_file/iter_import/scan/search — the main entry point), `src/bookman/config.py` (persisted library location and offline setting, shared by CLI and TUI; `configured_library` opens it), `src/bookman/cli.py` (`bookman` console script), `src/bookman/models.py` (Book/BookFormat; `Book.id` is identity, ADR-17), `src/bookman/formats/` (per-format parsers), `src/bookman/identify/` (ISBN, Open Library lookup/search, the `match_basis` same-book rule, and `identify()` which ties them together), `src/bookman/storage/` (catalog + index)
-**Key constraints:** one runtime dependency (`pypdf`), plus the optional `bookman[crypto]` extra (`pypdf[cryptodome]`, for AES-encrypted PDFs; ADR-29); everything else (EPUB parsing, HTTP) is stdlib-only; managed library folder is flat (`Library/<Title>/`), no author-level nesting
-**Identification spec:** `docs/IDENTIFICATION.md` — the intended Identify/Group/match-rule behavior as a Mermaid flowchart plus a normative YAML block with stable step IDs (MATCH-0..3, IDENT-1..6, GROUP-1..4). Written from the ADRs, never from the code, so it is the source of truth to check the code against; `docs/FEATURES.md` Part I is the conformance report against it, and its `Step` column maps each scenario to a step. Change it (with an ADR) before changing identification behavior. Loaded on demand by the `matching` skill (`.claude/skills/matching/`), which triggers on matching/grouping work rather than every session; `/matching` invokes it by hand. The code is bound to it by `bookman.identify.SPEC_VERSION`, a `Spec:` line on every implementing function, and `tests/test_spec_conformance.py` (ADR-16).
-**Patterns:** value objects in `models.py`; format parsers are plain callables satisfying the `FormatParser` Protocol and registered by suffix in `bookman.formats` (`register`/`parser_for`/`supported_suffixes`); metadata lookups go through the `MetadataSource` Protocol injected into `Library` (ADR-13); `storage.store.Catalog` is the one persistence boundary over metadata.json (source of truth) + the disposable sqlite3 index (ADR-12); every raised exception is a `BookmanError`; stub-first for new public functions per `.claude/claudify.md`
+**Entry point:** `src/bookmgr/__init__.py` (exports `Library`, `Book`, `BookFormat`, `FormatKind`, `MatchBasis`, `UnsupportedFormatError`; the lookup seam `MetadataSource`, `Candidate`, `MetadataSourceError`, `OpenLibrarySource`, `NullSource`; every error type under `BookmgrError` (`ParseError`/`BadEpubError`/`BadPdfError`, `UnsupportedFormatError`, `MetadataSourceError`/`OpenLibraryError`, `CatalogError`, `ConfigError`, `LibraryNotConfiguredError`); `supported_suffixes`; and the config API: `Config`, `config_path`, `load_config`, `save_config`, `resolve_library`)
+**Key paths:** `src/bookmgr/library.py` (Library: import_file/iter_import/scan/search — the main entry point), `src/bookmgr/config.py` (persisted library location and offline setting, shared by CLI and TUI; `configured_library` opens it), `src/bookmgr/cli.py` (`bookmgr` console script), `src/bookmgr/models.py` (Book/BookFormat; `Book.id` is identity, ADR-17), `src/bookmgr/formats/` (per-format parsers), `src/bookmgr/identify/` (ISBN, Open Library lookup/search, the `match_basis` same-book rule, and `identify()` which ties them together), `src/bookmgr/storage/` (catalog + index)
+**Key constraints:** one runtime dependency (`pypdf`), plus the optional `bookmgr[crypto]` extra (`pypdf[cryptodome]`, for AES-encrypted PDFs; ADR-29); everything else (EPUB parsing, HTTP) is stdlib-only; managed library folder is flat (`Library/<Title>/`), no author-level nesting
+**Identification spec:** `docs/IDENTIFICATION.md` — the intended Identify/Group/match-rule behavior as a Mermaid flowchart plus a normative YAML block with stable step IDs (MATCH-0..3, IDENT-1..6, GROUP-1..4). Written from the ADRs, never from the code, so it is the source of truth to check the code against; `docs/FEATURES.md` Part I is the conformance report against it, and its `Step` column maps each scenario to a step. Change it (with an ADR) before changing identification behavior. Loaded on demand by the `matching` skill (`.claude/skills/matching/`), which triggers on matching/grouping work rather than every session; `/matching` invokes it by hand. The code is bound to it by `bookmgr.identify.SPEC_VERSION`, a `Spec:` line on every implementing function, and `tests/test_spec_conformance.py` (ADR-16).
+**Patterns:** value objects in `models.py`; format parsers are plain callables satisfying the `FormatParser` Protocol and registered by suffix in `bookmgr.formats` (`register`/`parser_for`/`supported_suffixes`); metadata lookups go through the `MetadataSource` Protocol injected into `Library` (ADR-13); `storage.store.Catalog` is the one persistence boundary over metadata.json (source of truth) + the disposable sqlite3 index (ADR-12); every raised exception is a `BookmgrError`; stub-first for new public functions per `.claude/claudify.md`
 
 ## Decisions (ADRs)
 <!-- Append new ADRs with /log -->
@@ -320,19 +320,34 @@
 **Alternatives considered:** Three subclasses (rejected: one `except` and a match on an enum is simpler for a frontend, and subclasses can't be added without the same constructor problem). Documenting `Path` as required (rejected: a `str` is what a Makefile one-liner or a file picker hands over).
 **Consequences:** `LibraryNotConfiguredError`'s message still names `bookman init`; nothing has asked for that to change.
 
+### ADR-44: The distribution is named `bookman-core`; the import package and the CLI command stay `bookman`
+*Superseded by ADR-45 (2026-10-26) before it was released: the whole project is renamed `bookmgr`.*
+**Date:** 2026-10-20
+**Context:** TUI request (inbox, 2026-10-17). PyPI already has an unrelated `bookman` (v0.5, "A tool to manage your bookmarks"), so a bare `bookman` requirement from PyPI resolves to it. The TUI depends on a git URL for now, but PyPI rejects git-URL dependencies, so this blocks the first PyPI release of either project.
+**Decision:** `[project] name = "bookman-core"` from 1.4.0. The import package (`from bookman import ...`), the `bookman` CLI command, the `"bookman"` logger and the Open Library User-Agent prefix are unchanged. Code that reads the installed version asks for `bookman-core`. The wheel becomes `bookman_core-<version>-py3-none-any.whl`.
+**Alternatives considered:** `bookman-lib` (rejected: "library" already means the user's book collection everywhere in the API, so it reads as "the library library"). `bookman-engine` (accurate but suggests a runtime rather than a set of functions to call). `pybookman` (says nothing). `bookman-ebooks` (works around the bookmarks clash only, and ties the name to the format). Renaming the import package too (rejected: it would break every consumer's imports for no gain).
+**Consequences:** `bookman-core` reads as a pair with `bookman-tui`. A consumer changes only its requirement name, and does so when it moves to 1.4.0 or later: uv refuses a `bookman @ <url>` requirement whose package now calls itself `bookman-core`, while a pin to v1.3.0 keeps building as `bookman`. `pip install bookman` still installs the bookmarks tool, so the README gives the install line in full. The name is unclaimed until the first PyPI upload.
+
+### ADR-45: The project is renamed `bookmgr`: distribution, import package, CLI command, on-disk names and repository
+**Date:** 2026-10-26
+**Context:** ADR-44 renamed only the distribution, to `bookman-core`, to get around PyPI's unrelated `bookman`. That project also installs a `bookman-gui` command, which is the name a future GUI frontend would want, and keeps `bookman` as its import package. A frontend family (`-tui`, later `-gui`) needs one name that nobody else holds. Nobody but the author runs bookman or its TUI yet (2026-10-26), so a clean break costs nothing now and more with every user after.
+**Decision:** Everything that said `bookman` says `bookmgr` from 2.0.0: the distribution and the import package (`from bookmgr import Library`), the CLI command, the logger, the Open Library User-Agent, `BookmanError` → `BookmgrError`, the environment variables (`BOOKMGR_LIBRARY`, `BOOKMGR_CONFIG`), the library marker (`.bookmgr-library.json`), the index (`.bookmgr-index.sqlite3`), the config folder (`bookmgr/`), and the GitHub repository (`konoerik/bookmgr`, with the TUI renamed `bookmgr-tui`). No migration and no aliases: a 1.x library is opened by renaming its marker by hand; the index is rebuilt on open. Past ADRs, CHANGELOG entries and FIELD-NOTES keep the old name, since they describe what the project was then.
+**Alternatives considered:** `bookman-core` (ADR-44; leaves the GUI's name taken and the import package shared with an unrelated project). `shelver`, `shelfwise`, `octavo` (free, but lose the "book manager" meaning everything is written around). `bookmn` (reads as a typo of `bookman` and steers people to the bookmarks tool), `bookmg` ("mg" reads as milligrams). Keeping `-core` on the distribution (unnecessary once the name is unique; the frontends carry the suffix). A migration that reads the old marker, config and environment variables (unnecessary with no other users).
+**Consequences:** 2.0.0, since every import breaks. The library is `bookmgr` on PyPI and the frontends are `bookmgr-tui` and `bookmgr-gui`. `pip install bookmgr`, `from bookmgr import ...` and `bookmgr import ...` all use one name. The repository rename is made on GitHub, which redirects the old URLs.
+
 ## Detail
 <!-- Staged-process transitions can be diagrammed here as a Mermaid stateDiagram-v2 block — offered by /log. -->
 
 ### Module structure
 ```
 src/
-└── bookman/
+└── bookmgr/
     ├── __init__.py       # Public API — explicit __all__
-    ├── errors.py         # BookmanError and every subclass a frontend can catch by name
+    ├── errors.py         # BookmgrError and every subclass a frontend can catch by name
     ├── models.py         # Book, BookFormat, FormatKind, MatchBasis
     ├── library.py         # Library: import_file/scan/search — implemented, tested
     ├── config.py         # Config, config_path/load/save, locate/resolve_library, configured_library
-    ├── cli.py            # `bookman` console script: init/import/list/search/config — implemented, tested
+    ├── cli.py            # `bookmgr` console script: init/import/list/search/config — implemented, tested
     ├── formats/
     │   ├── __init__.py   # registers the built-in parsers; re-exports base
     │   ├── base.py       # ParsedMetadata, FormatParser protocol, suffix registry (register/parser_for/is_supported/supported_suffixes)
@@ -351,7 +366,7 @@ src/
 tests/
 ├── conftest.py           # `source` (FakeSource) and `library` fixtures
 ├── helpers.py            # FakeSource, make_epub/make_pdf builders
-├── test_errors.py        # the BookmanError hierarchy
+├── test_errors.py        # the BookmgrError hierarchy
 ├── test_logging.py       # swallowed failures are logged
 ├── test_formats_registry.py
 ├── test_isbn.py
@@ -381,4 +396,4 @@ tests/
 - `formats.*`, `identify.*`, `storage.*` remain internal — `Library` is the intended surface for a consumer like the TUI.
 
 ### Compatibility and versioning
-Python 3.10+. Semantic versioning: patch for fixes, minor for new public API (new exports from `bookman/__init__.py`), major for breaking changes to any exported symbol's shape or behavior.
+Python 3.10+. Semantic versioning: patch for fixes, minor for new public API (new exports from `bookmgr/__init__.py`), major for breaking changes to any exported symbol's shape or behavior.

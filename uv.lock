@@ -71,8 +71,8 @@ wheels = [
 ]
 
 [[package]]
-name = "bookman"
-version = "1.3.0"
+name = "bookmgr"
+version = "2.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "pypdf" },

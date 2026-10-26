@@ -1,7 +1,7 @@
 """Persisted user configuration: where the managed library lives, and
 whether imports look books up online.
 
-Set once (`bookman init`, or `save_config` from another frontend), then
+Set once (`bookmgr init`, or `save_config` from another frontend), then
 every consumer opens the library through `configured_library` (or
 resolves just the root through `resolve_library`), so the CLI and TUI
 agree on the same library and the same metadata source without each
@@ -17,17 +17,17 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from bookman.errors import (
+from bookmgr.errors import (
     ConfigError,
     LibraryNotConfiguredError,
     LibraryNotFoundError,
     LibraryNotFoundReason,
 )
-from bookman.identify.source import NullSource
-from bookman.library import Library, StrPath, is_library
+from bookmgr.identify.source import NullSource
+from bookmgr.library import Library, StrPath, is_library
 
-ENV_LIBRARY = "BOOKMAN_LIBRARY"
-ENV_CONFIG = "BOOKMAN_CONFIG"
+ENV_LIBRARY = "BOOKMGR_LIBRARY"
+ENV_CONFIG = "BOOKMGR_CONFIG"
 
 
 @dataclass(frozen=True)
@@ -49,12 +49,12 @@ class Config:
 
 
 def config_path() -> Path:
-    """Return where bookman's config file lives on this platform.
+    """Return where bookmgr's config file lives on this platform.
 
-    `$BOOKMAN_CONFIG`, if set, names the file directly and overrides the
-    platform default. Otherwise: `~/Library/Application Support/bookman/`
-    on macOS, `%APPDATA%\\bookman\\` on Windows, and
-    `$XDG_CONFIG_HOME/bookman/` (default `~/.config/bookman/`) elsewhere,
+    `$BOOKMGR_CONFIG`, if set, names the file directly and overrides the
+    platform default. Otherwise: `~/Library/Application Support/bookmgr/`
+    on macOS, `%APPDATA%\\bookmgr\\` on Windows, and
+    `$XDG_CONFIG_HOME/bookmgr/` (default `~/.config/bookmgr/`) elsewhere,
     each holding a `config.json`.
 
     Returns:
@@ -70,7 +70,7 @@ def config_path() -> Path:
         base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
     else:
         base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
-    return base / "bookman" / "config.json"
+    return base / "bookmgr" / "config.json"
 
 
 def load_config(path: Path | None = None) -> Config | None:
@@ -80,7 +80,7 @@ def load_config(path: Path | None = None) -> Config | None:
         path: File to read. Defaults to `config_path()`.
 
     Returns:
-        The stored Config, or None if the file doesn't exist (bookman
+        The stored Config, or None if the file doesn't exist (bookmgr
         has never been set up).
 
     Raises:
@@ -135,7 +135,7 @@ class LibraryOrigin(str, Enum):
     """Passed by the caller: a `--library` flag, a folder the user picked."""
 
     ENVIRONMENT = "environment"
-    """The `$BOOKMAN_LIBRARY` environment variable."""
+    """The `$BOOKMGR_LIBRARY` environment variable."""
 
     CONFIG = "config"
     """The saved config file."""
@@ -158,7 +158,7 @@ class LibraryLocation:
 
     def describe(self) -> str:
         """Where the root was named, as a phrase for a person:
-        "passed explicitly", "set by $BOOKMAN_LIBRARY" or "saved in
+        "passed explicitly", "set by $BOOKMGR_LIBRARY" or "saved in
         <config file>"."""
         if self.origin is LibraryOrigin.ENVIRONMENT:
             return f"set by ${ENV_LIBRARY}"
@@ -171,7 +171,7 @@ def locate_library(explicit: StrPath | None = None) -> LibraryLocation:
     """Decide which library root to use, and say where it was named.
 
     Precedence: `explicit` (e.g. a `--library` flag), then the
-    `$BOOKMAN_LIBRARY` environment variable, then the config file. A
+    `$BOOKMGR_LIBRARY` environment variable, then the config file. A
     frontend showing "which library, and why" reads it from here rather
     than repeating the precedence.
 
@@ -196,7 +196,7 @@ def locate_library(explicit: StrPath | None = None) -> LibraryLocation:
     config = load_config(path)
     if config is None:
         raise LibraryNotConfiguredError(
-            f"no library configured: run `bookman init <dir>` or set ${ENV_LIBRARY}"
+            f"no library configured: run `bookmgr init <dir>` or set ${ENV_LIBRARY}"
         )
     return LibraryLocation(config.library, LibraryOrigin.CONFIG, path)
 
@@ -205,7 +205,7 @@ def resolve_library(explicit: StrPath | None = None) -> Path:
     """Decide which library root to use: `locate_library(explicit).path`.
 
     Precedence: `explicit` (e.g. a `--library` flag), then the
-    `$BOOKMAN_LIBRARY` environment variable, then the config file.
+    `$BOOKMGR_LIBRARY` environment variable, then the config file.
 
     Args:
         explicit: A caller-supplied root that should win over everything
@@ -231,7 +231,7 @@ def configured_library(explicit: StrPath | None = None, *, create: bool = False)
     CLI and the TUI use the same root and the same source. The root is
     chosen as `locate_library` does. The source comes from the config
     file, even when the root came from `explicit` or
-    `$BOOKMAN_LIBRARY`: `NullSource()` when `offline` is set, else
+    `$BOOKMGR_LIBRARY`: `NullSource()` when `offline` is set, else
     Open Library.
 
     Unless `create` is set, only an existing library is opened (see
@@ -262,7 +262,7 @@ def configured_library(explicit: StrPath | None = None, *, create: bool = False)
     root = location.path
     where = location.describe()
     # ADR-43: the next step in each message suits any frontend; the CLI
-    # adds its `bookman init` hint, a frontend reads `reason`.
+    # adds its `bookmgr init` hint, a frontend reads `reason`.
     if root.exists() and not root.is_dir():
         raise LibraryNotFoundError(
             root,
@@ -281,7 +281,7 @@ def configured_library(explicit: StrPath | None = None, *, create: bool = False)
     if not create and not is_library(root) and not _is_empty(root):
         raise LibraryNotFoundError(
             root,
-            f"not a bookman library: {root} ({where}) holds other files; a library "
+            f"not a bookmgr library: {root} ({where}) holds other files; a library "
             "is a folder of its own, so create a new one and import these files into it",
             reason=LibraryNotFoundReason.NOT_A_LIBRARY,
             location=location,

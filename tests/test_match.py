@@ -1,6 +1,6 @@
 import pytest
 
-from bookman.identify.match import (
+from bookmgr.identify.match import (
     author_surnames,
     authors_agree,
     is_file_name_title,
@@ -10,7 +10,7 @@ from bookman.identify.match import (
     normalize_title,
     titles_agree,
 )
-from bookman.models import MatchBasis
+from bookmgr.models import MatchBasis
 
 # --- normalize_title ---
 

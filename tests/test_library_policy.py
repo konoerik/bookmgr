@@ -3,9 +3,9 @@ directly on bare Books -- no files, no network."""
 
 import pytest
 
-from bookman.identify.resolve import Identification
-from bookman.library import _apply_identification
-from bookman.models import Book, LookupOutcome, MatchBasis, ReadIssue, fold_lookup
+from bookmgr.identify.resolve import Identification
+from bookmgr.library import _apply_identification
+from bookmgr.models import Book, LookupOutcome, MatchBasis, ReadIssue, fold_lookup
 
 
 def _found(

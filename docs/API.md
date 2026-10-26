@@ -1,12 +1,12 @@
 # Frontend guide
 
-How to build a frontend (a TUI, a GUI, a script) on bookman. This guide is
+How to build a frontend (a TUI, a GUI, a script) on bookmgr. This guide is
 organized by task. For the exact signatures, read the docstrings, which are the
-per-function reference. `src/bookman/cli.py` is a complete frontend built on
+per-function reference. `src/bookmgr/cli.py` is a complete frontend built on
 nothing but this API and serves as the worked example throughout.
 
-Everything below is importable from `bookman`. The public surface is exactly
-`bookman.__all__`, and anything else is internal. A test checks that every
+Everything below is importable from `bookmgr`. The public surface is exactly
+`bookmgr.__all__`, and anything else is internal. A test checks that every
 exported name appears in this guide.
 
 Every function or method that takes a filesystem path accepts a `str` or any
@@ -15,7 +15,7 @@ path-like object as well as a `Path` (ADR-43).
 ## 1. Open the library
 
 ```python
-from bookman import configured_library
+from bookmgr import configured_library
 
 library = configured_library()  # the saved library, which must exist
 library = configured_library(Path(pick), create=True)  # a new one the user chose
@@ -23,7 +23,7 @@ library = configured_library(Path(pick), create=True)  # a new one the user chos
 
 `configured_library` is the one way a frontend should build its `Library`. It
 resolves the root in the same order everywhere: the argument you pass (a
-`--library` flag, a folder picker), then `$BOOKMAN_LIBRARY`, then the saved
+`--library` flag, a folder picker), then `$BOOKMGR_LIBRARY`, then the saved
 config. It also takes the metadata source from the saved config: Open Library,
 or none when the user turned lookups off. The CLI and the TUI therefore always
 agree on both the library and the source (ADR-8, ADR-38).
@@ -44,7 +44,7 @@ It raises:
   next step (retry when a drive is connected, choose another folder) without
   re-checking the disk. `path` is the root and `location` is the
   `LibraryLocation` that named it. The message says what happened and the next
-  step in words that suit any frontend; the CLI adds its own `bookman init`
+  step in words that suit any frontend; the CLI adds its own `bookmgr init`
   hint (ADR-43).
 - `ConfigError` when the config file is malformed (its message names the file).
 
@@ -55,11 +55,11 @@ touching anything:
 
 | The folder | `is_library` | Offer |
 |---|---|---|
-| A bookman library | True | Open it: `configured_library(path)` |
+| A bookmgr library | True | Open it: `configured_library(path)` |
 | Missing, or empty | False | Create a library there: `configured_library(path, create=True)` |
 | Holds other files (`~/Books` full of EPUBs) | False | A library is a folder of its own: suggest a new folder inside it, then import these files |
 
-A library is marked by a `.bookman-library.json` file at its root, written when
+A library is marked by a `.bookmgr-library.json` file at its root, written when
 it is created or first opened. A library from before the marker existed is
 recognised by its book folders and gets marked the next time it is opened.
 `Library(root)` itself always creates and marks `root`, so call it only on a
@@ -70,9 +70,9 @@ folder meant to be a library.
 `locate_library(explicit)` returns a `LibraryLocation`: the `path`, its
 `origin` (a `LibraryOrigin`: `EXPLICIT`, `ENVIRONMENT` or `CONFIG`), and the
 `config_file` when the saved config named it. `describe()` gives the phrase
-("set by $BOOKMAN_LIBRARY", "saved in …"). A settings screen can show it, and
+("set by $BOOKMGR_LIBRARY", "saved in …"). A settings screen can show it, and
 warn when a flag or the environment variable overrides the saved choice (compare
-with `load_config().library`). `bookman config` shows it.
+with `load_config().library`). `bookmgr config` shows it.
 
 ### Settings
 
@@ -85,7 +85,7 @@ The persisted settings are a `Config`:
 
 - `load_config()` returns the saved `Config`, or None before first setup.
 - `save_config(config)` writes it atomically.
-- `config_path()` says where the file lives (per platform; `$BOOKMAN_CONFIG`
+- `config_path()` says where the file lives (per platform; `$BOOKMGR_CONFIG`
   overrides it).
 - `resolve_library(explicit)` gives just the root, without opening anything.
 
@@ -93,14 +93,14 @@ To change one setting, keep the others:
 
 ```python
 import dataclasses
-from bookman import Config, load_config, save_config
+from bookmgr import Config, load_config, save_config
 
 current = load_config() or Config(library=chosen_root)
 save_config(dataclasses.replace(current, offline=True))
 ```
 
 Saving a fresh `Config(library=...)` resets every other field to its default.
-`bookman init` (`_cmd_init`) and `bookman config` (`_cmd_config`) show both
+`bookmgr init` (`_cmd_init`) and `bookmgr config` (`_cmd_config`) show both
 patterns.
 
 `Library(root, source=...)` is still available when you want to choose the
@@ -109,7 +109,7 @@ source yourself, as tests do. `Library` never reads the config on its own.
 ## 2. Import with progress
 
 ```python
-from bookman import (
+from bookmgr import (
     AlreadyInLibrary,
     Book,
     FormatConflictError,
@@ -164,7 +164,7 @@ for path in picked_paths:
 
 `find_file(path)` and `find_files(paths)` answer offline without importing:
 each file is read once to hash it, and one index query covers the lot. Files
-placed before bookman recorded hashes (libraries from before 1.3) are not found
+placed before bookmgr recorded hashes (libraries from before 1.3) are not found
 until they are next imported.
 
 For one file, `library.import_file(path)` returns the `Book` or raises. Files
@@ -214,11 +214,11 @@ edited by hand shows up in `search` after the next scan.
 | `grouped` | The weakest `MatchBasis` that ever joined a second file into this book, or None for a single file |
 | `reviewed` | A human confirmed or corrected this book; imports won't overwrite it |
 | `needs_review` | Derived: not reviewed, and identified weakly or not at all, or grouped on title alone. This is the review queue |
-| `lookup` | A `LookupOutcome` saying what happened when bookman looked the book up: `IDENTIFIED` (exactly when `identified` is set), `NO_MATCH` (the source answered and nothing agreed, or the file named nothing to look up), `FAILED` (a request failed: `reidentify` may find it) or `NOT_ATTEMPTED` (offline). None for an unidentified book from before 1.3 |
+| `lookup` | A `LookupOutcome` saying what happened when bookmgr looked the book up: `IDENTIFIED` (exactly when `identified` is set), `NO_MATCH` (the source answered and nothing agreed, or the file named nothing to look up), `FAILED` (a request failed: `reidentify` may find it) or `NOT_ATTEMPTED` (offline). None for an unidentified book from before 1.3 |
 | `added` | When the import that created the book ran, as a timezone-aware UTC `datetime`, for sorting by arrival. None for books from before 1.3 |
 | `directory` | The book's folder: where it lives, and its display name. Not its identity |
 
-A `BookFormat.read_issue` is a `ReadIssue`. It means bookman could not read
+A `BookFormat.read_issue` is a `ReadIssue`. It means bookmgr could not read
 inside that file (encrypted, password, DRM), so the book was named after the
 filename. `read_issue.advice` is the sentence to show the user, and it always
 names the next step. The CLI prints it in `_print_read_issue`.
@@ -261,7 +261,7 @@ has none (ADR-24).
 
 ## 6. Errors
 
-Everything bookman raises on purpose is a `BookmanError`. Anything else
+Everything bookmgr raises on purpose is a `BookmgrError`. Anything else
 (`OSError`, a bug) is not one:
 
 | Error | When |
@@ -283,7 +283,7 @@ is a next step, so they can be shown to the user as they are.
 A source is anything that satisfies the `MetadataSource` protocol:
 
 ```python
-from bookman import Candidate, MetadataSourceError
+from bookmgr import Candidate, MetadataSourceError
 
 
 class MySource:
@@ -298,14 +298,14 @@ library = Library(root, source=MySource())
 Return a `Candidate` (`title`, `author`, `cover_url`) per record, best first.
 A missing record is None or an empty list, not an error. A failed request
 raises `MetadataSourceError` and nothing else. Your source only proposes
-candidates. bookman decides whether one is the same book as the file, by the
+candidates. bookmgr decides whether one is the same book as the file, by the
 rules in `docs/IDENTIFICATION.md`. `OpenLibrarySource` is the default source,
 and `NullSource` knows nothing (offline). Choosing among several sources from
 the config is not built yet (FEATURES N8).
 
 ## Logging
 
-bookman logs under the `"bookman"` logger with a `NullHandler`, so nothing
+bookmgr logs under the `"bookmgr"` logger with a `NullHandler`, so nothing
 shows unless your application configures logging. Swallowed failures (a lookup
 timeout, a skipped `metadata.json`) are logged there, which gives a frontend a
 debug pane for free.

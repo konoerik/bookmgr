@@ -13,10 +13,10 @@ to avoid).
 - **Language:** Python 3.10+
 - **Package manager:** uv (see Operating Rules)
 - **Testing:** pytest
-- **Distribution:** PyPI (public library, consumed by a separate TUI project)
+- **Distribution:** PyPI as `bookmgr` (ADR-45), consumed by a separate TUI project (`bookmgr-tui`)
 
 ## Key Conventions
-- Public API lives in `src/bookman/__init__.py`
+- Public API lives in `src/bookmgr/__init__.py`
 - Keep public surface minimal — prefer explicit `__all__`
 - Semantic versioning: bump patch for fixes, minor for new public API, major for breaking changes
 - Type hints required on all public functions; Google-style docstrings (Args/Returns/Raises)

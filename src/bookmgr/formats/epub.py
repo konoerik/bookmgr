@@ -8,9 +8,9 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
-from bookman.errors import ParseError
-from bookman.formats.base import ParsedMetadata
-from bookman.identify.isbn import extract_isbns
+from bookmgr.errors import ParseError
+from bookmgr.formats.base import ParsedMetadata
+from bookmgr.identify.isbn import extract_isbns
 
 _CONTAINER_PATH = "META-INF/container.xml"
 _CONTAINER_NS = {"c": "urn:oasis:names:tc:opendocument:xmlns:container"}
@@ -38,7 +38,7 @@ def parse_epub(path: Path) -> ParsedMetadata:
     Reads META-INF/container.xml to locate the OPF package document,
     then reads dc:title, dc:creator, and dc:identifier from its
     <metadata> block. Candidate identifiers are validated as ISBNs via
-    bookman.identify.isbn; non-ISBN identifier schemes (e.g. a bare
+    bookmgr.identify.isbn; non-ISBN identifier schemes (e.g. a bare
     UUID or DOI) are dropped rather than returned.
 
     When no identifier is a valid ISBN, the text of the first

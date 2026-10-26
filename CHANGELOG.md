@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-26
+
+The project is renamed `bookmgr` and published on PyPI for the first
+time. Apart from the names, nothing changed: the API and the CLI behave
+exactly as in 1.3.0.
+
+### Changed
+- **Breaking:** the project is renamed `bookmgr`, because PyPI's
+  `bookman` is an unrelated project (ADR-45). Everything that said
+  `bookman` now says `bookmgr`: the distribution (`uv add bookmgr`), the
+  import package (`from bookmgr import Library`), the CLI command, the
+  `"bookmgr"` logger, `BookmanError` → `BookmgrError`, the environment
+  variables `BOOKMGR_LIBRARY` and `BOOKMGR_CONFIG`, the config folder
+  (`bookmgr/`), and the GitHub repository (`konoerik/bookmgr`). There are
+  no aliases for the old names.
+- **Breaking:** a library is marked by `.bookmgr-library.json` and indexed
+  in `.bookmgr-index.sqlite3`. To keep using a 1.x library, rename its
+  `.bookman-library.json` to `.bookmgr-library.json` and delete
+  `.bookman-index.sqlite3` (the next `scan` rebuilds the index). Move the
+  saved config from the old `bookman/` config folder to `bookmgr/`, or run
+  `bookmgr init` again.
+
 ## [1.3.0] - 2026-10-04
 
 For the TUI's import screens: recognizing files already in the library,
@@ -292,8 +314,9 @@ ADRs in `docs/ARCHITECTURE.md` refer to them.
   by scanning text (PDF) rather than in a metadata field (EPUB);
   `match_basis` takes a matching `isbn_scraped` keyword.
 
-[Unreleased]: https://github.com/konoerik/bookman/compare/v1.3.0...HEAD
-[1.3.0]: https://github.com/konoerik/bookman/releases/tag/v1.3.0
-[1.2.0]: https://github.com/konoerik/bookman/releases/tag/v1.2.0
-[1.1.0]: https://github.com/konoerik/bookman/releases/tag/v1.1.0
-[1.0.0]: https://github.com/konoerik/bookman/releases/tag/v1.0.0
+[Unreleased]: https://github.com/konoerik/bookmgr/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/konoerik/bookmgr/releases/tag/v2.0.0
+[1.3.0]: https://github.com/konoerik/bookmgr/releases/tag/v1.3.0
+[1.2.0]: https://github.com/konoerik/bookmgr/releases/tag/v1.2.0
+[1.1.0]: https://github.com/konoerik/bookmgr/releases/tag/v1.1.0
+[1.0.0]: https://github.com/konoerik/bookmgr/releases/tag/v1.0.0

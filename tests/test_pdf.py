@@ -4,8 +4,8 @@ import pytest
 from pypdf import PdfWriter
 from pypdf.generic import DictionaryObject, NameObject
 
-from bookman.formats.pdf import _ISBN_SCAN_PAGES, BadPdfError, parse_pdf
-from bookman.models import ReadIssue
+from bookmgr.formats.pdf import _ISBN_SCAN_PAGES, BadPdfError, parse_pdf
+from bookmgr.models import ReadIssue
 
 VALID_ISBN13 = "9780306406157"
 
@@ -125,7 +125,7 @@ def test_parse_pdf_not_a_pdf_raises_bad_pdf_error(tmp_path):
 
 
 def test_parse_pdf_with_a_real_password_reports_it_instead_of_failing(tmp_path):
-    # Spec PR6 (ADR-29): the file is intact and bought; bookman just
+    # Spec PR6 (ADR-29): the file is intact and bought; bookmgr just
     # cannot see inside it. It is imported on its filename alone.
     pdf = _make_pdf(tmp_path / "book.pdf", title="Deep Work", password="secret")
     result = parse_pdf(pdf)
@@ -154,7 +154,7 @@ def test_parse_pdf_reports_a_missing_crypto_backend_instead_of_failing(tmp_path,
     # a PdfReadError and used to escape as an undocumented exception.
     from pypdf.errors import DependencyError
 
-    from bookman.formats import pdf as pdf_module
+    from bookmgr.formats import pdf as pdf_module
 
     def reader_without_backend(path):
         raise DependencyError("cryptography>=3.1 is required for AES algorithm")
@@ -199,7 +199,7 @@ def test_parse_pdf_silences_pypdf_recoverable_warnings(tmp_path, monkeypatch, ca
     put back afterwards."""
     import logging
 
-    from bookman.formats import pdf as pdf_module
+    from bookmgr.formats import pdf as pdf_module
 
     pypdf_logger = logging.getLogger("pypdf")
     original_level = pypdf_logger.level

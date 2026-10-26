@@ -19,7 +19,7 @@ SPEC_VERSION = 7
 
 Bumped only when the *intended* behavior changes -- a step added, removed or
 altered -- never when the code changes to conform to a step it already
-claimed. Deliberately not re-exported from `bookman`: it is internal
+claimed. Deliberately not re-exported from `bookmgr`: it is internal
 bookkeeping, not part of the public API.
 """
 

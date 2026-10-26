@@ -3,10 +3,10 @@ from dataclasses import replace
 
 import pytest
 
-from bookman.models import Book, BookFormat, FormatKind
-from bookman.storage import index
-from bookman.storage.catalog import save_metadata
-from bookman.storage.store import Catalog
+from bookmgr.models import Book, BookFormat, FormatKind
+from bookmgr.storage import index
+from bookmgr.storage.catalog import save_metadata
+from bookmgr.storage.store import Catalog
 
 
 def _new_book(root, title, author=None):
@@ -98,7 +98,7 @@ def test_search_rebuilds_an_index_from_an_older_layout(root):
     book, directory = _new_book(root, "Deep Work", "Cal Newport")
     save_metadata(book, directory)
     # Pre-R3 index: absolute-path rows, no schema stamp.
-    db_path = root / ".bookman-index.sqlite3"
+    db_path = root / ".bookmgr-index.sqlite3"
     conn = sqlite3.connect(db_path)
     conn.execute("CREATE TABLE books (directory TEXT PRIMARY KEY, title TEXT)")
     conn.commit()
@@ -141,7 +141,7 @@ def test_reindex_failure_is_logged_not_raised(root, caplog):
     catalog.put(book, directory)
     catalog._index_path = root  # a directory: the replace cannot succeed
 
-    with caplog.at_level("WARNING", logger="bookman.storage"):
+    with caplog.at_level("WARNING", logger="bookmgr.storage"):
         catalog.reindex(catalog.all())
 
     assert "could not refresh the search index" in caplog.text
@@ -192,7 +192,7 @@ def test_rows_restate_every_book_and_follow_a_hand_edit(root):
     assert [r.title for r in catalog.rows()] == ["Deep Work, Edited By Hand"]
 
 
-def test_rows_drop_a_folder_removed_behind_bookmans_back(root):
+def test_rows_drop_a_folder_removed_behind_bookmgrs_back(root):
     import shutil
 
     catalog = Catalog(root)
@@ -205,8 +205,8 @@ def test_rows_drop_a_folder_removed_behind_bookmans_back(root):
     assert [b.title for b in catalog.search("")] == ["Emma"]
 
 
-def test_rows_pick_up_a_book_folder_added_behind_bookmans_back(root):
-    from bookman.storage.catalog import save_metadata as save
+def test_rows_pick_up_a_book_folder_added_behind_bookmgrs_back(root):
+    from bookmgr.storage.catalog import save_metadata as save
 
     catalog = Catalog(root)
     catalog.rows()  # build the index while the library is empty

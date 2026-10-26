@@ -1,4 +1,4 @@
-"""PDF metadata extraction (via pypdf, bookman's one runtime dependency)."""
+"""PDF metadata extraction (via pypdf, bookmgr's one runtime dependency)."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from pathlib import Path
 from pypdf import PasswordType, PdfReader
 from pypdf.errors import DependencyError, PdfReadError
 
-from bookman.errors import ParseError
-from bookman.formats.base import ParsedMetadata
-from bookman.identify.isbn import extract_isbns
-from bookman.models import ReadIssue
+from bookmgr.errors import ParseError
+from bookmgr.formats.base import ParsedMetadata
+from bookmgr.identify.isbn import extract_isbns
+from bookmgr.models import ReadIssue
 
 # Where the copyright page can sit. A real bundle put the ISBN as far
 # back as page index 7 (O'Reilly) and at index 5 on every No Starch
@@ -33,17 +33,17 @@ def parse_pdf(path: Path) -> ParsedMetadata:
     Reads the PDF's document info dictionary (/Title, /Author) via
     pypdf, and scans the text of the first `_ISBN_SCAN_PAGES` pages
     (where a copyright/title page ISBN typically appears) for
-    ISBN-10/13 identifiers via bookman.identify.isbn.extract_isbns.
+    ISBN-10/13 identifiers via bookmgr.identify.isbn.extract_isbns.
     PDFs rarely carry a structured ISBN field, so this is a
     best-effort text scan rather than a lookup of a known metadata key.
 
-    An encrypted PDF that bookman cannot open is not an error (spec
+    An encrypted PDF that bookmgr cannot open is not an error (spec
     PR6, ADR-29): it is a real PDF, and a bought book, so it comes back
     with no title, author or ISBNs and a `read_issue` saying why --
     AES without the optional crypto backend, a real password, or
     encryption pypdf cannot handle (a DRM security handler, a damaged
     `/Encrypt` entry). An AES PDF with an empty password reads normally
-    once `bookman[crypto]` is installed.
+    once `bookmgr[crypto]` is installed.
 
     Args:
         path: Path to a .pdf file.
@@ -93,7 +93,7 @@ def parse_pdf(path: Path) -> ParsedMetadata:
 
 
 def _unreadable(issue: ReadIssue) -> ParsedMetadata:
-    """An intact PDF whose contents bookman cannot read: nothing but the reason."""
+    """An intact PDF whose contents bookmgr cannot read: nothing but the reason."""
     return ParsedMetadata(title=None, author=None, isbns=[], isbns_scraped=True, read_issue=issue)
 
 

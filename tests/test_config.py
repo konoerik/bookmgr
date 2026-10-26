@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from bookman import config
-from bookman.config import (
+from bookmgr import config
+from bookmgr.config import (
     Config,
     LibraryLocation,
     LibraryNotConfiguredError,
@@ -16,9 +16,9 @@ from bookman.config import (
     resolve_library,
     save_config,
 )
-from bookman.errors import LibraryNotFoundError, LibraryNotFoundReason
-from bookman.identify.source import NullSource
-from bookman.library import MARKER_NAME, Library
+from bookmgr.errors import LibraryNotFoundError, LibraryNotFoundReason
+from bookmgr.identify.source import NullSource
+from bookmgr.library import MARKER_NAME, Library
 
 
 @pytest.fixture(autouse=True)
@@ -36,27 +36,27 @@ def _isolated_environment(monkeypatch, tmp_path):
 def test_config_path_on_macos(monkeypatch, tmp_path):
     monkeypatch.setattr("sys.platform", "darwin")
 
-    assert config_path() == tmp_path / "home/Library/Application Support/bookman/config.json"
+    assert config_path() == tmp_path / "home/Library/Application Support/bookmgr/config.json"
 
 
 def test_config_path_on_linux_defaults_to_dot_config(monkeypatch, tmp_path):
     monkeypatch.setattr("sys.platform", "linux")
 
-    assert config_path() == tmp_path / "home/.config/bookman/config.json"
+    assert config_path() == tmp_path / "home/.config/bookmgr/config.json"
 
 
 def test_config_path_on_linux_honors_xdg_config_home(monkeypatch, tmp_path):
     monkeypatch.setattr("sys.platform", "linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    assert config_path() == tmp_path / "xdg/bookman/config.json"
+    assert config_path() == tmp_path / "xdg/bookmgr/config.json"
 
 
 def test_config_path_on_windows_uses_appdata(monkeypatch, tmp_path):
     monkeypatch.setattr("sys.platform", "win32")
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
 
-    assert config_path() == tmp_path / "AppData/bookman/config.json"
+    assert config_path() == tmp_path / "AppData/bookmgr/config.json"
 
 
 def test_config_path_env_override_wins_on_every_platform(monkeypatch, tmp_path):
@@ -140,7 +140,7 @@ class _DefaultSource(NullSource):
 
 @pytest.fixture
 def default_source(monkeypatch):
-    monkeypatch.setattr("bookman.library.OpenLibrarySource", _DefaultSource)
+    monkeypatch.setattr("bookmgr.library.OpenLibrarySource", _DefaultSource)
 
 
 def test_configured_library_opens_the_saved_library_online(monkeypatch, tmp_path, default_source):
@@ -220,7 +220,7 @@ def test_resolve_library_falls_back_to_file(monkeypatch, tmp_path):
 def test_resolve_library_raises_when_nothing_is_configured(monkeypatch, tmp_path):
     monkeypatch.setenv(config.ENV_CONFIG, str(tmp_path / "config.json"))
 
-    with pytest.raises(LibraryNotConfiguredError, match="bookman init"):
+    with pytest.raises(LibraryNotConfiguredError, match="bookmgr init"):
         resolve_library()
 
 
@@ -248,7 +248,7 @@ def test_locate_library_says_the_root_came_from_the_environment(monkeypatch, tmp
     location = locate_library()
 
     assert location == LibraryLocation(tmp_path / "from-env", LibraryOrigin.ENVIRONMENT)
-    assert location.describe() == "set by $BOOKMAN_LIBRARY"
+    assert location.describe() == "set by $BOOKMGR_LIBRARY"
 
 
 def test_locate_library_names_the_config_file_the_root_came_from(monkeypatch, tmp_path):
@@ -285,7 +285,7 @@ def test_configured_library_refuses_a_folder_of_other_files(saved_root):
     saved_root.mkdir()
     (saved_root / "Deep Work.epub").write_bytes(b"x")
 
-    with pytest.raises(LibraryNotFoundError, match="not a bookman library"):
+    with pytest.raises(LibraryNotFoundError, match="not a bookmgr library"):
         configured_library()
 
     assert not (saved_root / MARKER_NAME).exists()
@@ -349,7 +349,7 @@ def test_library_not_found_carries_its_reason_and_location(saved_root, make, cre
     assert info.value.reason is reason
     assert info.value.location.path == saved_root
     assert info.value.location.origin is LibraryOrigin.CONFIG
-    assert "bookman init" not in str(info.value)
+    assert "bookmgr init" not in str(info.value)
 
 
 def test_library_not_found_built_the_old_way_reads_its_reason_off_the_disk(tmp_path):

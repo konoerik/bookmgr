@@ -6,7 +6,7 @@ decision record — never from reading `src/`. That is deliberate: a spec
 transcribed from the code can only ever agree with the code, bugs
 included, and would be worthless as a thing to check against.
 
-So this file may legitimately disagree with what bookman does today.
+So this file may legitimately disagree with what bookmgr does today.
 That disagreement is the point, not a defect: `docs/FEATURES.md` Part I
 is the conformance report against this spec, and its gap rows are the
 register of where the code has not caught up. When the two disagree, the
@@ -208,7 +208,7 @@ derived_from:
   - ADR-26                   # GROUP-1 joins on any ISBN the file carries
   - ADR-27                   # an ISBN-identified follow-up upgrades only through the joined ISBN
   - ADR-28                   # the EPUB's embedded cover when the record supplies none
-  - ADR-29                   # a file bookman cannot read inside is imported anyway, with the reason kept
+  - ADR-29                   # a file bookmgr cannot read inside is imported anyway, with the reason kept
   - ADR-30                   # title fuzz stays within a word; a trailing inverted article is dropped
   - ADR-31                   # a volume marker survives MATCH-0 like an edition marker
   - ADR-32                   # a bare document filename is a placeholder title; the author beside it is dropped
@@ -256,7 +256,7 @@ principles:
   - id: PR6
     rule: >
       A bought book always lands in the library. A file that is really
-      of its format but whose contents bookman cannot read -- encrypted
+      of its format but whose contents bookmgr cannot read -- encrypted
       in a way it cannot open, or behind a password -- is imported with
       nothing but its filename to go on, and the reason is kept on the
       file so a frontend can say what to do about it. Only a file that

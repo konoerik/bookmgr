@@ -23,7 +23,7 @@ Stable book identity (FEATURES I5), then mark-reviewed / edit / re-identify
 Phase 3 works without it.
 
 ### Phase 3: TUI frontend (separate project)
-Consumes bookman as a library: browse, filter/search, inspect multi-format
+Consumes bookmgr as a library: browse, filter/search, inspect multi-format
 books, surface `Book.needs_review` books for manual correction and set `Book.reviewed`.
 
 ### Phase 4 (unscheduled): MOBI support
@@ -39,7 +39,7 @@ stays in the enum so this needs no breaking change (ADR-2).
   The format scope is EPUB and PDF, plus MOBI if Phase 4 ever happens, and
   nothing else (ADR-2). Adding a
   parser is deliberately easy (`FormatParser` is a suffix registry), which
-  is exactly why the boundary is written down — bookman manages a *book*
+  is exactly why the boundary is written down — bookmgr manages a *book*
   library, not a document pile. See FEATURES H13.
 - Format conversion (EPUB↔MOBI↔PDF, etc.)
 - Device transfer/sync
