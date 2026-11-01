@@ -1,6 +1,6 @@
 """bookmgr: local ebook library management.
 
-Identifies, catalogs, and organizes EPUB/PDF/MOBI files by title,
+Identifies, catalogs, and organizes EPUB and PDF files by title,
 independent of any frontend (a companion TUI consumes this as a library).
 """
 

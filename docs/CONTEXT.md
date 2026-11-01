@@ -1,8 +1,8 @@
 # Context
 <!-- Updated by /wrap at session end. Edit manually if needed. Keep it under 8 lines. -->
 
-**Current focus:** 2.0.0 released as `bookmgr`, the first PyPI release (ADR-45); the TUI moves to `bookmgr>=2.0`.
-**Last session (2026-10-26):** Triaged the TUI's requests against 1.3.0 (FN-22; four PLAN Backlog items). Renamed the whole project `bookman` → `bookmgr` (ADR-45 supersedes the unreleased ADR-44 `bookman-core`): package, CLI, env vars, on-disk names, docs; no migration, since the author is the only user.
+**Current focus:** Rename complete: both repos are local and on PyPI as `bookmgr` / `bookmgr-tui` 2.0.0, and the old `bookman` / `bookman-tui` checkouts and Claude project folders are deleted. v2.0.0 release workflow and PyPI page checked and fine. 2.0.1 (patch) ships the short PyPI readme `docs/PYPI.md`, the README release paragraph and the MOBI docstring fix. Breaking changes are now held and bundled into one future major (see memory).
+**Last session (2026-10-26):** Moved the working copy from `~/Sandbox/bookman` to `~/Sandbox/bookmgr`: uncommitted work, `inbox/`, `.dev/` (config path fixed), `tools/calibre-oracle/` minus its 5.8G `lib/` (imports renamed), and Claude memory carried over; `uv sync` and 663 tests pass. Updated claudify to `1e28407`, keeping the locally edited `continue.md`.
 **Blocking:** Nothing.
-**Next action:** Check the v2.0.0 workflow run and the PyPI page; then the small TUI backlog items (import a file set, unreadable books) or OQ3 (PLAN Active).
-<!-- wrapped: 2026-10-04 -->
+**Next action:** Decide whether to revise the sole-user/no-migration memory now that the package is on PyPI, then the PLAN Active features (OQ3 editions first).
+<!-- wrapped: 2026-10-26 -->

@@ -1,8 +1,8 @@
 [project]
 name = "bookmgr"
-version = "2.0.0"
+version = "2.0.1"
 description = "Local ebook library management: identify, catalog, and organize EPUB and PDF files by title, grouping the formats of one book, independent of any frontend."
-readme = "README.md"
+readme = "docs/PYPI.md"
 authors = [
     { name = "Erikton Konomi", email = "konoerik@gmail.com" }
 ]

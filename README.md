@@ -137,8 +137,9 @@ uv build               # sdist + wheel into dist/
 ```
 
 Releasing is tagging: `git tag v<version> && git push origin v<version>`
-runs the checks, builds the wheel and publishes a GitHub Release with it
-(`.github/workflows/release.yml`). See `CONTRIBUTING.md` for the
+runs the checks, builds the wheel, publishes it to PyPI and then to a
+GitHub Release (`.github/workflows/release.yml`). PyPI shows the short
+`docs/PYPI.md`, not this file. See `CONTRIBUTING.md` for the
 spec-first rule that governs changes to identification and grouping.
 
 The `Makefile` wraps these and adds targets for a throwaway dev library

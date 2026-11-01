@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-31
+
+### Changed
+- The PyPI project page now shows a short readme (`docs/PYPI.md`):
+  what bookmgr does, how to install it, and links to the full README,
+  the frontend guide and this changelog. The README's release section
+  says that tagging publishes to PyPI.
+
+### Fixed
+- The package docstring no longer lists MOBI among the supported
+  formats; bookmgr imports EPUB and PDF only.
+
 ## [2.0.0] - 2026-10-26
 
 The project is renamed `bookmgr` and published on PyPI for the first
@@ -314,7 +326,8 @@ ADRs in `docs/ARCHITECTURE.md` refer to them.
   by scanning text (PDF) rather than in a metadata field (EPUB);
   `match_basis` takes a matching `isbn_scraped` keyword.
 
-[Unreleased]: https://github.com/konoerik/bookmgr/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/konoerik/bookmgr/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/konoerik/bookmgr/releases/tag/v2.0.1
 [2.0.0]: https://github.com/konoerik/bookmgr/releases/tag/v2.0.0
 [1.3.0]: https://github.com/konoerik/bookmgr/releases/tag/v1.3.0
 [1.2.0]: https://github.com/konoerik/bookmgr/releases/tag/v1.2.0
